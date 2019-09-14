@@ -22,11 +22,7 @@
 #include "platform/NonCopyable.h"
 
 namespace mbed {
-/**
- * \defgroup drivers_BusInOut BusInOut class
- * \ingroup drivers-public-api-gpio
- * @{
- */
+/** \addtogroup drivers */
 
 /** A digital input output bus, used for setting the state of a collection of pins.
  *  Implemented as an array of DigitalInOut pins, the bus can be constructed by any
@@ -34,6 +30,7 @@ namespace mbed {
  *  capabilities
  *
  * @note Synchronization level: Thread safe
+ * @ingroup drivers
  */
 class BusInOut : private NonCopyable<BusInOut> {
 
@@ -149,8 +146,6 @@ protected:
     PlatformMutex _mutex;
 #endif //!defined(DOXYGEN_ONLY)
 };
-
-/** @}*/
 
 } // namespace mbed
 

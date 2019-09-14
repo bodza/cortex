@@ -124,10 +124,7 @@
        defined(TARGET_STM32F769NI))
 #define INITIAL_SP              (0x20080000UL)
 
-#elif defined(TARGET_STM32L4R5xI)
-#define INITIAL_SP              (0x200A0000UL)
-
-#elif defined(TARGET_STM32L4R9xI)
+#elif defined(TARGET_STM32L4R5ZI)
 #define INITIAL_SP              (0x200A0000UL)
 
 #else

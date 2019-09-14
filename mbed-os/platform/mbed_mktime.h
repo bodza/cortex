@@ -1,5 +1,8 @@
+
+/** \addtogroup platform */
+/** @{*/
 /* mbed Microcontroller Library
- * Copyright (c) 2017-2019 ARM Limited
+ * Copyright (c) 2017-2017 ARM Limited
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,9 +28,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/** \addtogroup platform-public-api */
-/** @{*/
 
 /**
  * \defgroup platform_mktime mktime functions

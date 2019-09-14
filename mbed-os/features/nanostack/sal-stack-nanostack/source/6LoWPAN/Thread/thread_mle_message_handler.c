@@ -47,6 +47,7 @@
 #include "6LoWPAN/Thread/thread_leader_service.h"
 #include "6LoWPAN/Thread/thread_tmfcop_lib.h"
 #include "6LoWPAN/Thread/thread_host_bootstrap.h"
+#include "6LoWPAN/Thread/thread_extension.h"
 #include "6LoWPAN/Thread/thread_router_bootstrap.h"
 #include "6LoWPAN/Thread/thread_network_synch.h"
 #include "6LoWPAN/Thread/thread_neighbor_class.h"
@@ -743,7 +744,7 @@ static bool thread_address_registration_tlv_check(protocol_interface_info_entry_
             }
         }
     }
-    thread_bootstrap_child_address_registration_response_process(cur);
+    thread_extension_child_address_registration_response_process(cur);
 
     return ret_val;
 }

@@ -45,7 +45,6 @@ typedef struct ws_neighbor_class_s {
     uint8_t list_size;                                    /*!< List size*/
 } ws_neighbor_class_t;
 
-
 /**
  * ws_neighbor_class_alloc a function for allocate giving list size
  *

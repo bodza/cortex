@@ -58,7 +58,14 @@ nsapi_error_t AT_CellularInformation::get_serial_number(char *buf, size_t buf_si
         return NSAPI_ERROR_UNSUPPORTED;
     }
 
-    return _at.at_cmd_str("+CGSN", "=", buf, buf_size, "%d", type);
+    _at.lock();
+    _at.cmd_start("AT+CGSN=");
+    _at.write_int(type);
+    _at.cmd_stop();
+    _at.resp_start("+CGSN:");
+    _at.read_string(buf, buf_size);
+    _at.resp_stop();
+    return _at.unlock_return_error();
 }
 
 nsapi_error_t AT_CellularInformation::get_info(const char *cmd, char *buf, size_t buf_size)
@@ -83,7 +90,8 @@ nsapi_error_t AT_CellularInformation::get_imsi(char *imsi, size_t buf_size)
         return NSAPI_ERROR_PARAMETER;
     }
     _at.lock();
-    _at.cmd_start_stop("+CIMI", "");
+    _at.cmd_start("AT+CIMI");
+    _at.cmd_stop();
     _at.resp_start();
     _at.read_string(imsi, MAX_IMSI_LENGTH + 1);
     _at.resp_stop();
@@ -95,5 +103,11 @@ nsapi_error_t AT_CellularInformation::get_iccid(char *buf, size_t buf_size)
     if (buf == NULL || buf_size == 0) {
         return NSAPI_ERROR_PARAMETER;
     }
-    return _at.at_cmd_str("+CCID", "?", buf, buf_size);
+    _at.lock();
+    _at.cmd_start("AT+CCID?");
+    _at.cmd_stop();
+    _at.resp_start("+CCID:");
+    _at.read_string(buf, buf_size);
+    _at.resp_stop();
+    return _at.unlock_return_error();
 }

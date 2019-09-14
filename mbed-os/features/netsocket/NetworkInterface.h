@@ -36,7 +36,6 @@ class WiFiInterface;
 class MeshInterface;
 class CellularInterface;
 class EMACInterface;
-class PPPInterface;
 
 /** Common interface that is shared between network devices.
  *
@@ -308,7 +307,7 @@ public:
      * By default, interfaces are in synchronous mode which means that
      * connect() or disconnect() blocks until it reach the target state or requested operation fails.
      *
-     * @param blocking Use false to set NetworkInterface in asynchronous mode.
+     * @param blocking Use true to set NetworkInterface in asynchronous mode.
      * @return NSAPI_ERROR_OK on success
      * @return NSAPI_ERROR_UNSUPPORTED if driver does not support asynchronous mode.
      * @return negative error code on failure.

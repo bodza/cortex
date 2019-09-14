@@ -28,7 +28,7 @@
 #include "platform/Callback.h"
 #include "platform/mbed_atomic.h"
 #include "platform/mbed_debug.h"
-#include "rtos/ThisThread.h"
+#include "platform/mbed_wait_api.h"
 
 #ifndef MBED_CONF_ESP8266_DEBUG
 #define MBED_CONF_ESP8266_DEBUG false
@@ -46,20 +46,14 @@
 #define MBED_CONF_ESP8266_RST NC
 #endif
 
-#ifndef MBED_CONF_ESP8266_PWR
-#define MBED_CONF_ESP8266_PWR NC
-#endif
-
 #define TRACE_GROUP  "ESPI" // ESP8266 Interface
 
 using namespace mbed;
-using namespace rtos;
 
 #if defined MBED_CONF_ESP8266_TX && defined MBED_CONF_ESP8266_RX
 ESP8266Interface::ESP8266Interface()
     : _esp(MBED_CONF_ESP8266_TX, MBED_CONF_ESP8266_RX, MBED_CONF_ESP8266_DEBUG, MBED_CONF_ESP8266_RTS, MBED_CONF_ESP8266_CTS),
       _rst_pin(MBED_CONF_ESP8266_RST), // Notice that Pin7 CH_EN cannot be left floating if used as reset
-      _pwr_pin(MBED_CONF_ESP8266_PWR),
       _ap_sec(NSAPI_SECURITY_UNKNOWN),
       _if_blocking(true),
       _if_connected(_cmutex),
@@ -92,15 +86,13 @@ ESP8266Interface::ESP8266Interface()
 #endif
 
 // ESP8266Interface implementation
-ESP8266Interface::ESP8266Interface(PinName tx, PinName rx, bool debug, PinName rts, PinName cts, PinName rst, PinName pwr)
+ESP8266Interface::ESP8266Interface(PinName tx, PinName rx, bool debug, PinName rts, PinName cts, PinName rst)
     : _esp(tx, rx, debug, rts, cts),
       _rst_pin(rst),
-      _pwr_pin(pwr),
       _ap_sec(NSAPI_SECURITY_UNKNOWN),
       _if_blocking(true),
       _if_connected(_cmutex),
       _initialized(false),
-      _connect_retval(NSAPI_ERROR_OK),
       _conn_stat(NSAPI_STATUS_DISCONNECTED),
       _conn_stat_cb(NULL),
       _global_event_queue(mbed_event_queue()), // Needs to be set before attaching event() to SIGIO
@@ -140,8 +132,6 @@ ESP8266Interface::~ESP8266Interface()
 
     // Power down the modem
     _rst_pin.rst_assert();
-    // Power off the modem
-    _pwr_pin.power_off();
 }
 
 ESP8266Interface::ResetPin::ResetPin(PinName rst_pin) : _rst_pin(mbed::DigitalOut(rst_pin, 1))
@@ -168,33 +158,6 @@ void ESP8266Interface::ResetPin::rst_deassert()
 bool ESP8266Interface::ResetPin::is_connected()
 {
     return _rst_pin.is_connected();
-}
-
-ESP8266Interface::PowerPin::PowerPin(PinName pwr_pin) : _pwr_pin(mbed::DigitalOut(pwr_pin, !MBED_CONF_ESP8266_POWER_ON_POLARITY))
-{
-}
-
-void ESP8266Interface::PowerPin::power_on()
-{
-    if (_pwr_pin.is_connected()) {
-        _pwr_pin = MBED_CONF_ESP8266_POWER_ON_POLARITY;
-        tr_debug("HW power-on");
-        ThisThread::sleep_for(MBED_CONF_ESP8266_POWER_ON_TIME_MS);
-    }
-}
-
-void ESP8266Interface::PowerPin::power_off()
-{
-    if (_pwr_pin.is_connected()) {
-        _pwr_pin = !MBED_CONF_ESP8266_POWER_ON_POLARITY;
-        tr_debug("HW power-off");
-        ThisThread::sleep_for(MBED_CONF_ESP8266_POWER_OFF_TIME_MS);
-    }
-}
-
-bool ESP8266Interface::PowerPin::is_connected()
-{
-    return _pwr_pin.is_connected();
 }
 
 int ESP8266Interface::connect(const char *ssid, const char *pass, nsapi_security_t security,
@@ -319,7 +282,7 @@ int ESP8266Interface::set_credentials(const char *ssid, const char *pass, nsapi_
     if (ssid_length > 0
             && ssid_length <= ESP8266_SSID_MAX_LENGTH) {
         memset(ap_ssid, 0, sizeof(ap_ssid));
-        strncpy(ap_ssid, ssid, ESP8266_SSID_MAX_LENGTH);
+        strncpy(ap_ssid, ssid, sizeof(ap_ssid));
     } else {
         return NSAPI_ERROR_PARAMETER;
     }
@@ -334,7 +297,7 @@ int ESP8266Interface::set_credentials(const char *ssid, const char *pass, nsapi_
         if (pass_length >= ESP8266_PASSPHRASE_MIN_LENGTH
                 && pass_length <= ESP8266_PASSPHRASE_MAX_LENGTH) {
             memset(ap_pass, 0, sizeof(ap_pass));
-            strncpy(ap_pass, pass, ESP8266_PASSPHRASE_MAX_LENGTH);
+            strncpy(ap_pass, pass, sizeof(ap_pass));
         } else {
             return NSAPI_ERROR_PARAMETER;
         }
@@ -382,8 +345,6 @@ int ESP8266Interface::disconnect()
 
     // Power down the modem
     _rst_pin.rst_assert();
-    // Power off the modem
-    _pwr_pin.power_off();
 
     return ret;
 }
@@ -438,7 +399,7 @@ int ESP8266Interface::scan(WiFiAccessPoint *res, unsigned count, scan_mode mode,
     }
 
     return _esp.scan(res, count, (mode == SCANMODE_ACTIVE ? ESP8266::SCANMODE_ACTIVE : ESP8266::SCANMODE_PASSIVE),
-                     t_max, t_min);
+                     t_min, t_max);
 }
 
 bool ESP8266Interface::_get_firmware_ok()
@@ -462,8 +423,6 @@ bool ESP8266Interface::_get_firmware_ok()
 nsapi_error_t ESP8266Interface::_init(void)
 {
     if (!_initialized) {
-        _pwr_pin.power_off();
-        _pwr_pin.power_on();
         if (_reset() != NSAPI_ERROR_OK) {
             return NSAPI_ERROR_DEVICE_ERROR;
         }
@@ -500,7 +459,7 @@ nsapi_error_t ESP8266Interface::_reset()
         _rst_pin.rst_assert();
         // If you happen to use Pin7 CH_EN as reset pin, not needed otherwise
         // https://www.espressif.com/sites/default/files/documentation/esp8266_hardware_design_guidelines_en.pdf
-        ThisThread::sleep_for(2); // Documentation says 200 us; need 2 ticks to get minimum 1 ms.
+        wait_ms(2); // Documentation says 200 us should have been enough, but experimentation shows that 1ms was not enough
         _esp.flush();
         _rst_pin.rst_deassert();
     } else {

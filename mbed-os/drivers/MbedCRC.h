@@ -17,7 +17,7 @@
 #ifndef MBED_CRC_API_H
 #define MBED_CRC_API_H
 
-#include "drivers/internal/TableCRC.h"
+#include "drivers/TableCRC.h"
 #include "hal/crc_api.h"
 #include "platform/mbed_assert.h"
 #include "platform/SingletonPtr.h"
@@ -40,12 +40,8 @@ but we check for ( width < 8) before performing shift, so it should not be an is
 #endif
 
 namespace mbed {
-/** \addtogroup drivers-public-api */
+/** \addtogroup drivers */
 /** @{*/
-/**
- * \defgroup drivers_MbedCRC MbedCRC class
- * @{
- */
 
 extern SingletonPtr<PlatformMutex> mbed_crc_mutex;
 
@@ -105,6 +101,7 @@ extern SingletonPtr<PlatformMutex> mbed_crc_mutex;
  *      return 0;
  *  }
  * @endcode
+ * @ingroup drivers
  */
 template <uint32_t polynomial = POLY_32BIT_ANSI, uint8_t width = 32>
 class MbedCRC {
@@ -156,7 +153,7 @@ public:
      *  @param  crc  CRC is the output value
      *  @return  0 on success, negative error code on failure
      */
-    int32_t compute(const void *buffer, crc_data_size_t size, uint32_t *crc)
+    int32_t compute(void *buffer, crc_data_size_t size, uint32_t *crc)
     {
         MBED_ASSERT(crc != NULL);
         int32_t status = 0;
@@ -203,14 +200,14 @@ public:
      *  @note: CRC as output in compute_partial is not final CRC value, call `compute_partial_stop`
      *         to get final correct CRC value.
      */
-    int32_t compute_partial(const void *buffer, crc_data_size_t size, uint32_t *crc)
+    int32_t compute_partial(void *buffer, crc_data_size_t size, uint32_t *crc)
     {
         int32_t status = 0;
 
         switch (_mode) {
 #if DEVICE_CRC
             case HARDWARE:
-                hal_crc_compute_partial(static_cast<const uint8_t *>(buffer), size);
+                hal_crc_compute_partial((uint8_t *)buffer, size);
                 *crc = 0;
                 break;
 #endif
@@ -568,8 +565,6 @@ private:
 #endif
 
 /** @}*/
-/** @}*/
-
 } // namespace mbed
 
 #endif

@@ -345,13 +345,6 @@ bool CellularStateMachine::device_ready()
     }
 #endif // MBED_CONF_CELLULAR_DEBUG_AT
 
-#ifdef MBED_CONF_CELLULAR_CLEAR_ON_CONNECT
-    if (_cellularDevice.clear() != NSAPI_ERROR_OK) {
-        tr_warning("CellularDevice clear failed");
-        return false;
-    }
-#endif
-
     send_event_cb(CellularDeviceReady);
     _cellularDevice.set_ready_cb(0);
 
@@ -371,17 +364,9 @@ void CellularStateMachine::state_device_ready()
             if (device_ready()) {
                 _status = 0;
                 enter_to_state(STATE_SIM_PIN);
-            } else {
-                tr_warning("Power cycle CellularDevice and restart connecting");
-                (void) _cellularDevice.soft_power_off();
-                (void) _cellularDevice.hard_power_off();
-                _status = 0;
-                _is_retry = true;
-                enter_to_state(STATE_INIT);
             }
         } else {
             _status = 0;
-            _is_retry = true;
             enter_to_state(STATE_INIT);
         }
     }

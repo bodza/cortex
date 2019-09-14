@@ -29,15 +29,8 @@
 #define ONE_MHZ     1000000
 
 namespace mbed {
-/** \defgroup drivers-public-api-spi SPI
- * \ingroup drivers-public-api
- */
 
-/**
- * \defgroup drivers_QSPI QSPI class
- * \ingroup drivers-public-api-spi
- * @{
- */
+/** \addtogroup drivers */
 
 /** A QSPI Driver, used for communicating with QSPI slave devices
  *
@@ -76,6 +69,7 @@ namespace mbed {
  *
  * }
  * @endcode
+ * @ingroup drivers
  */
 class QSPI : private NonCopyable<QSPI> {
 
@@ -230,8 +224,6 @@ private:
     inline void _build_qspi_command(int instruction, int address, int alt);
 #endif
 };
-
-/** @}*/
 
 } // namespace mbed
 

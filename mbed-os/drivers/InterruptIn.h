@@ -29,11 +29,7 @@
 #include "platform/NonCopyable.h"
 
 namespace mbed {
-/**
- * \defgroup drivers_InterruptIn InterruptIn class
- * \ingroup drivers-public-api-gpio
- * @{
- */
+/** \addtogroup drivers */
 
 /** A digital interrupt input, used to call a function on a rising or falling edge
  *
@@ -61,6 +57,7 @@ namespace mbed {
  *     }
  * }
  * @endcode
+ * @ingroup drivers
  */
 class InterruptIn : private NonCopyable<InterruptIn> {
 
@@ -177,8 +174,6 @@ protected:
     void irq_init(PinName pin);
 #endif
 };
-
-/** @}*/
 
 } // namespace mbed
 

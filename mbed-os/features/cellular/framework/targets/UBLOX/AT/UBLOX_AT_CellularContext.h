@@ -18,7 +18,6 @@
 #define UBLOX_AT_CELLULARCONTEXT_H_
 
 #include "AT_CellularContext.h"
-#include "UBLOX_AT_CellularNetwork.h"
 
 namespace mbed {
 
@@ -30,34 +29,8 @@ public:
     virtual void do_connect();
     virtual const char *get_gateway();
 
-    const char *get_apn(void);
-    const char *get_uname(void);
-    const char *get_pwd(void);
-    CellularContext::AuthenticationType get_auth(void);
-
-    /** Convert nsapi_security_t to the modem security numbers.
-     *
-     * @param nsapi_security      Security protocol.
-     * @return                    Modem security numbers.
-     */
-    int nsapi_security_to_modem_security(AuthenticationType nsapi_security);
-
-    /** Get the next set of credentials from the database.
-     */
-    void get_next_credentials(char **config);
-#ifdef TARGET_UBLOX_C030_R412M
-    CellularNetwork::RadioAccessTechnology read_radio_technology(void);
-#endif
 protected:
     virtual NetworkStack *get_stack();
-
-    /** Connect the on board IP stack of the modem.
-     *
-     * @return      True if successful, otherwise false.
-     */
-#ifndef TARGET_UBLOX_C030_R41XM
-    nsapi_error_t define_context();
-#endif
 
 private:
 
@@ -67,7 +40,13 @@ private:
 
     /** The type of authentication to use.
      */
-    AuthenticationType _auth;
+    nsapi_security_t _auth;
+
+    /** Connect the on board IP stack of the modem.
+     *
+     * @return      True if successful, otherwise false.
+     */
+    nsapi_error_t open_data_channel();
 
     /** Activate one of the on-board modem's connection profiles.
      *
@@ -75,13 +54,18 @@ private:
      * @param username The user name to use.
      * @param password The password to use.
      * @param auth     The authentication method to use
-     *                 (NOAUTH, PAP,
-     *                 CHAP or AUTOMATIC).
+     *                 (NSAPI_SECURITY_NONE, NSAPI_SECURITY_PAP,
+     *                 NSAPI_SECURITY_CHAP or NSAPI_SECURITY_UNKNOWN).
      * @return         True if successful, otherwise false.
      */
-#ifndef TARGET_UBLOX_C030_R41XM
-    bool activate_profile(const char *apn, const char *username, const char *password, AuthenticationType auth);
-#endif
+    bool activate_profile(const char *apn, const char *username, const char *password);
+
+    /** Convert nsapi_security_t to the modem security numbers.
+     *
+     * @param nsapi_security      Security protocol.
+     * @return                    Modem security numbers.
+     */
+    int nsapi_security_to_modem_security(nsapi_security_t nsapi_security);
 
     /** Disconnect the on board IP stack of the modem.
      *
@@ -92,6 +76,10 @@ private:
     /** Read IMSI of modem.
      */
     nsapi_error_t get_imsi(char *imsi);
+
+    /** Get the next set of credentials from the database.
+     */
+    void get_next_credentials(char **config);
 };
 
 } /* namespace mbed */

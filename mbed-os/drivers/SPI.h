@@ -1,5 +1,5 @@
 /* mbed Microcontroller Library
- * Copyright (c) 2006-2019 ARM Limited
+ * Copyright (c) 2006-2015 ARM Limited
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -40,16 +40,12 @@
 #include "platform/CThunk.h"
 #include "hal/dma_api.h"
 #include "platform/CircularBuffer.h"
-#include "platform/Callback.h"
+#include "platform/FunctionPointer.h"
 #include "platform/Transaction.h"
 #endif
 
 namespace mbed {
-/**
- * \defgroup drivers_SPI SPI class
- * \ingroup drivers-public-api-spi
- * @{
- */
+/** \addtogroup drivers */
 
 struct use_gpio_ssel_t { };
 const use_gpio_ssel_t use_gpio_ssel;
@@ -94,6 +90,7 @@ const use_gpio_ssel_t use_gpio_ssel;
  *     device.unlock();
  * }
  * @endcode
+ * @ingroup drivers
  */
 class SPI : private NonCopyable<SPI> {
 
@@ -348,21 +345,15 @@ protected:
     enum SPIName { GlobalSPI };
 #endif
 
-    // All members of spi_peripheral_s must be initialized to make the structure
-    // constant-initialized, and hence able to be omitted by the linker,
-    // as SingletonPtr now relies on C++ constant-initialization. (Previously it
-    // worked through C++ zero-initialization). And all the constants should be zero
-    // to ensure it stays in the actual zero-init part of the image if used, avoiding
-    // an initialized-data cost.
     struct spi_peripheral_s {
         /* Internal SPI name identifying the resources. */
-        SPIName name = SPIName(0);
+        SPIName name;
         /* Internal SPI object handling the resources' state. */
-        spi_t spi{};
+        spi_t spi;
         /* Used by lock and unlock for thread safety */
         SingletonPtr<PlatformMutex> mutex;
         /* Current user of the SPI */
-        SPI *owner = nullptr;
+        SPI *owner;
 #if DEVICE_SPI_ASYNCH && TRANSACTION_QUEUE_SIZE_SPI
         /* Queue of pending transfers */
         SingletonPtr<CircularBuffer<Transaction<SPI>, TRANSACTION_QUEUE_SIZE_SPI> > transaction_buffer;
@@ -427,8 +418,6 @@ private:
 
 #endif //!defined(DOXYGEN_ONLY)
 };
-
-/** @}*/
 
 } // namespace mbed
 

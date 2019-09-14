@@ -32,9 +32,9 @@ struct at_reg_t {
 };
 
 static const at_reg_t at_reg[] = {
-    { CellularNetwork::C_EREG, "+CEREG", "+CEREG:"},
-    { CellularNetwork::C_GREG, "+CGREG", "+CGREG:"},
-    { CellularNetwork::C_REG,  "+CREG", "+CREG:"}
+    { CellularNetwork::C_EREG, "AT+CEREG", "+CEREG:"},
+    { CellularNetwork::C_GREG, "AT+CGREG", "+CGREG:"},
+    { CellularNetwork::C_REG,  "AT+CREG", "+CREG:"}
 };
 
 #if MBED_CONF_MBED_TRACE_ENABLE
@@ -189,43 +189,61 @@ nsapi_error_t AT_CellularNetwork::set_registration_urc(RegistrationType type, bo
     if (mode == RegistrationModeDisable) {
         return NSAPI_ERROR_UNSUPPORTED;
     } else {
+        _at.lock();
         if (urc_on) {
-            return _at.at_cmd_discard(at_reg[index].cmd, "=", "%d", mode);
+            _at.cmd_start(at_reg[index].cmd);
+            const uint8_t ch_eq = '=';
+            _at.write_bytes(&ch_eq, 1);
+            _at.write_int((int)mode);
         } else {
-            return _at.at_cmd_discard(at_reg[index].cmd, "=0");
+            _at.cmd_start(at_reg[index].cmd);
+            _at.write_string("=0", false);
         }
+
+        _at.cmd_stop_read_resp();
+        return _at.unlock_return_error();
     }
 }
 
 nsapi_error_t AT_CellularNetwork::get_network_registering_mode(NWRegisteringMode &mode)
 {
-    int ret;
-    nsapi_error_t error = _at.at_cmd_int("+COPS", "?", ret);
-    mode = (NWRegisteringMode)ret;
-    return error;
+    _at.lock();
+    _at.cmd_start("AT+COPS?");
+    _at.cmd_stop();
+    _at.resp_start("+COPS:");
+    mode = (NWRegisteringMode)_at.read_int();
+    _at.resp_stop();
+
+    return _at.unlock_return_error();
 }
 
 nsapi_error_t AT_CellularNetwork::set_registration(const char *plmn)
 {
+    _at.lock();
 
     if (!plmn) {
         tr_debug("Automatic network registration");
-        NWRegisteringMode mode;
-        if (get_network_registering_mode(mode) != NSAPI_ERROR_OK) {
-            return NSAPI_ERROR_DEVICE_ERROR;
+        _at.cmd_start("AT+COPS?");
+        _at.cmd_stop();
+        _at.resp_start("+COPS:");
+        int mode = _at.read_int();
+        _at.resp_stop();
+        if (mode != 0) {
+            _at.clear_error();
+            _at.cmd_start("AT+COPS=0");
+            _at.cmd_stop_read_resp();
         }
-        if (mode != NWModeAutomatic) {
-            return _at.at_cmd_discard("+COPS", "=0");
-        }
-        return NSAPI_ERROR_OK;
     } else {
         tr_debug("Manual network registration to %s", plmn);
+        _at.cmd_start("AT+COPS=1,2,");
+        _at.write_string(plmn);
         if (_op_act != RAT_UNKNOWN) {
-            return _at.at_cmd_discard("+COPS", "=1,2,", "%s%d", plmn, _op_act);
-        } else {
-            return _at.at_cmd_discard("+COPS", "=1,2", "%s", plmn);
+            _at.write_int(_op_act);
         }
+        _at.cmd_stop_read_resp();
     }
+
+    return _at.unlock_return_error();
 }
 
 void AT_CellularNetwork::read_reg_params(RegistrationType type, registration_params_t &reg_params)
@@ -272,12 +290,16 @@ void AT_CellularNetwork::read_reg_params(RegistrationType type, registration_par
 nsapi_error_t AT_CellularNetwork::set_attach()
 {
     _at.lock();
-    AttachStatus status;
-    get_attach(status);
 
-    if (status == Detached) {
+    _at.cmd_start("AT+CGATT?");
+    _at.cmd_stop();
+    _at.resp_start("+CGATT:");
+    int attached_state = _at.read_int();
+    _at.resp_stop();
+    if (attached_state != 1) {
         tr_debug("Network attach");
-        _at.at_cmd_discard("+CGATT", "=1");
+        _at.cmd_start("AT+CGATT=1");
+        _at.cmd_stop_read_resp();
     }
 
     return _at.unlock_return_error();
@@ -285,20 +307,31 @@ nsapi_error_t AT_CellularNetwork::set_attach()
 
 nsapi_error_t AT_CellularNetwork::get_attach(AttachStatus &status)
 {
-    int attach_status;
-    nsapi_error_t err = _at.at_cmd_int("+CGATT", "?", attach_status);
-    status = (attach_status == 1) ? Attached : Detached;
+    _at.lock();
 
-    return err;
+    _at.cmd_start("AT+CGATT?");
+    _at.cmd_stop();
+
+    _at.resp_start("+CGATT:");
+    if (_at.info_resp()) {
+        int attach_status = _at.read_int();
+        status = (attach_status == 1) ? Attached : Detached;
+    }
+    _at.resp_stop();
+
+    return _at.unlock_return_error();
 }
 
 nsapi_error_t AT_CellularNetwork::detach()
 {
     _at.lock();
-    tr_debug("Network detach");
-    _at.at_cmd_discard("+CGATT", "=0");
 
-    _at.at_cmd_discard("+COPS", "=2");
+    tr_debug("Network detach");
+    _at.cmd_start("AT+CGATT=0");
+    _at.cmd_stop_read_resp();
+
+    _at.cmd_start("AT+COPS=2");
+    _at.cmd_stop_read_resp();
 
     call_network_cb(NSAPI_STATUS_DISCONNECTED);
 
@@ -328,7 +361,8 @@ nsapi_error_t AT_CellularNetwork::scan_plmn(operList_t &operators, int &opsCount
 
     _at.lock();
 
-    _at.cmd_start_stop("+COPS", "=?");
+    _at.cmd_start("AT+COPS=?");
+    _at.cmd_stop();
 
     _at.resp_start("+COPS:");
 
@@ -366,7 +400,15 @@ nsapi_error_t AT_CellularNetwork::set_ciot_optimization_config(CIoT_Supported_Op
                                                                Callback<void(CIoT_Supported_Opt)> network_support_cb)
 {
     _ciotopt_network_support_cb = network_support_cb;
-    return _at.at_cmd_discard("+CCIOTOPT", "=1,", "%d%d", supported_opt, preferred_opt);
+    _at.lock();
+
+    _at.cmd_start("AT+CCIOTOPT=");
+    _at.write_int(1); //enable CCIOTOPTI URC
+    _at.write_int(supported_opt);
+    _at.write_int(preferred_opt);
+    _at.cmd_stop_read_resp();
+
+    return _at.unlock_return_error();
 }
 
 void AT_CellularNetwork::urc_cciotopti()
@@ -383,7 +425,8 @@ nsapi_error_t AT_CellularNetwork::get_ciot_ue_optimization_config(CIoT_Supported
 {
     _at.lock();
 
-    _at.cmd_start_stop("+CCIOTOPT", "?");
+    _at.cmd_start("AT+CCIOTOPT?");
+    _at.cmd_stop();
 
     _at.resp_start("+CCIOTOPT:");
     _at.read_int();
@@ -407,7 +450,8 @@ nsapi_error_t AT_CellularNetwork::get_signal_quality(int &rssi, int *ber)
 {
     _at.lock();
 
-    _at.cmd_start_stop("+CSQ", "");
+    _at.cmd_start("AT+CSQ");
+    _at.cmd_stop();
 
     _at.resp_start("+CSQ:");
     int t_rssi = _at.read_int();
@@ -448,7 +492,8 @@ nsapi_error_t AT_CellularNetwork::get_operator_params(int &format, operator_t &o
 {
     _at.lock();
 
-    _at.cmd_start_stop("+COPS", "?");
+    _at.cmd_start("AT+COPS?");
+    _at.cmd_stop();
 
     _at.resp_start("+COPS:");
     _at.read_int(); //ignore mode
@@ -478,7 +523,8 @@ nsapi_error_t AT_CellularNetwork::get_operator_names(operator_names_list &op_nam
 {
     _at.lock();
 
-    _at.cmd_start_stop("+COPN", "");
+    _at.cmd_start("AT+COPN");
+    _at.cmd_stop();
 
     _at.resp_start("+COPN:");
     operator_names_t *names = NULL;
@@ -494,7 +540,8 @@ nsapi_error_t AT_CellularNetwork::get_operator_names(operator_names_list &op_nam
 
 void AT_CellularNetwork::get_context_state_command()
 {
-    _at.cmd_start_stop("+CGACT", "?");
+    _at.cmd_start("AT+CGACT?");
+    _at.cmd_stop();
     _at.resp_start("+CGACT:");
 }
 
@@ -550,9 +597,12 @@ nsapi_error_t AT_CellularNetwork::get_registration_params(RegistrationType type,
 
     _at.lock();
 
-    _at.cmd_start_stop(at_reg[i].cmd, "?");
+    const char *rsp[] = { "+CEREG:", "+CGREG:", "+CREG:"};
+    _at.cmd_start(at_reg[i].cmd);
+    _at.write_string("?", false);
+    _at.cmd_stop();
+    _at.resp_start(rsp[i]);
 
-    _at.resp_start(at_reg[i].urc_prefix);
     (void)_at.read_int(); // ignore urc mode subparam
     read_reg_params(type, reg_params);
     _at.resp_stop();
@@ -620,7 +670,15 @@ nsapi_error_t AT_CellularNetwork::set_receive_period(int mode, EDRXAccessTechnol
     uint_to_binary_str(edrx_value, edrx, 5, 4);
     edrx[4] = '\0';
 
-    return _at.at_cmd_discard("+CEDRXS", "=", "%d%d%s", mode, act_type, edrx);
+    _at.lock();
+
+    _at.cmd_start("AT+CEDRXS=");
+    _at.write_int(mode);
+    _at.write_int(act_type);
+    _at.write_string(edrx);
+    _at.cmd_stop_read_resp();
+
+    return _at.unlock_return_error();
 }
 
 nsapi_error_t AT_CellularNetwork::set_packet_domain_event_reporting(bool on)
@@ -629,71 +687,10 @@ nsapi_error_t AT_CellularNetwork::set_packet_domain_event_reporting(bool on)
         return NSAPI_ERROR_UNSUPPORTED;
     }
 
-    return _at.at_cmd_discard("+CGEREP", "=", "%d", on ? 1 : 0);
-}
-
-nsapi_error_t AT_CellularNetwork::clear()
-{
-    tr_info("AT_CellularNetwork::clear");
-
     _at.lock();
-    _at.cmd_start_stop("+CGDCONT", "?");
-    _at.resp_start("+CGDCONT:");
-
-    struct context_s {
-        int id;
-        context_s *next;
-    };
-    CellularList<context_s> contexts;
-    while (_at.info_resp()) {
-        int cid = _at.read_int();
-        // clear all but the default context
-        if (cid <= 0) {
-            continue;
-        } else if (cid == 1) {
-#ifndef MBED_CONF_NSAPI_DEFAULT_CELLULAR_APN
-            continue;
-#else
-            char pdp_type_from_context[10];
-            int pdp_type_len = _at.read_string(pdp_type_from_context, sizeof(pdp_type_from_context));
-            if (pdp_type_len > 0) {
-                char apn[MAX_ACCESSPOINT_NAME_LENGTH];
-                int apn_len = _at.read_string(apn, sizeof(apn));
-                if (apn_len >= 0) {
-                    if (strcmp(apn, MBED_CONF_NSAPI_DEFAULT_CELLULAR_APN) == 0) {
-                        continue;
-                    }
-                }
-            }
-#endif
-        }
-        contexts.add_new()->id = cid;
-    }
-    _at.resp_stop();
-
-    if (contexts.get_head()) {
-        // try to detach from network before deleting contexts
-        (void)detach();
-        context_s *context = contexts.get_head();
-        while (context) {
-            if (_at.at_cmd_discard("+CGDCONT", "=", "%d", context->id) != NSAPI_ERROR_OK) {
-                tr_warn("Clear context %d failed", context->id);
-            }
-            context = context->next;
-        }
-#ifdef MBED_CONF_NSAPI_DEFAULT_CELLULAR_APN
-        char pdp_type_str[sizeof("IPV4V6")];
-        if (get_property(PROPERTY_IPV4V6_PDP_TYPE) ||
-                (get_property(PROPERTY_IPV4_PDP_TYPE) && get_property(PROPERTY_IPV6_PDP_TYPE))) {
-            strcpy(pdp_type_str, "IPV4V6");
-        } else if (get_property(PROPERTY_IPV6_PDP_TYPE)) {
-            strcpy(pdp_type_str, "IPV6");
-        } else {
-            strcpy(pdp_type_str, "IP");
-        }
-        _at.at_cmd_discard("+CGDCONT", "=", "%d%s%s", 1, pdp_type_str, MBED_CONF_NSAPI_DEFAULT_CELLULAR_APN);
-#endif
-    }
+    _at.cmd_start("AT+CGEREP=");
+    _at.write_int(on ? 1 : 0); // discard unsolicited result codes when MT TE link is reserved (e.g. in on line data mode); otherwise forward them directly to the TE
+    _at.cmd_stop_read_resp();
 
     return _at.unlock_return_error();
 }

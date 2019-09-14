@@ -18,6 +18,7 @@
 #define BLE_PAL_ATT_SERVER_MESSAGE_H_
 
 #include "ble/BLETypes.h"
+#include "ble/ArrayView.h"
 
 namespace ble {
 namespace pal {
@@ -399,7 +400,7 @@ struct AttReadByTypeResponse : public AttServerMessage {
      */
     struct attribute_data_t {
         attribute_handle_t handle;
-        Span<const uint8_t> value;
+        ArrayView<const uint8_t> value;
     };
 
     /**
@@ -445,7 +446,7 @@ struct AttReadResponse : public AttServerMessage {
     /**
      * Construct a Read Response from an array of bytes.
      */
-    AttReadResponse(Span<const uint8_t> data_) :
+    AttReadResponse(ArrayView<const uint8_t> data_) :
         AttServerMessage(AttributeOpcode::READ_RESPONSE), _data(data_) {
     }
 
@@ -472,7 +473,7 @@ struct AttReadResponse : public AttServerMessage {
     }
 
 private:
-    const Span<const uint8_t> _data;
+    const ArrayView<const uint8_t> _data;
 };
 
 
@@ -494,7 +495,7 @@ struct AttReadBlobResponse : public AttServerMessage {
     /**
      * Construct a read blob response from the value responded.
      */
-    AttReadBlobResponse(Span<const uint8_t> data_) :
+    AttReadBlobResponse(ArrayView<const uint8_t> data_) :
         AttServerMessage(AttributeOpcode::READ_BLOB_RESPONSE), _data(data_) {
     }
 
@@ -521,7 +522,7 @@ struct AttReadBlobResponse : public AttServerMessage {
     }
 
 private:
-    const Span<const uint8_t> _data;
+    const ArrayView<const uint8_t> _data;
 };
 
 
@@ -538,7 +539,7 @@ struct AttReadMultipleResponse : public AttServerMessage {
     /**
      * Construct a Resd Multiple Response from the set of value received.
      */
-    AttReadMultipleResponse(Span<const uint8_t> data_) :
+    AttReadMultipleResponse(ArrayView<const uint8_t> data_) :
         AttServerMessage(AttributeOpcode::READ_MULTIPLE_RESPONSE), _data(data_) {
     }
 
@@ -558,7 +559,7 @@ struct AttReadMultipleResponse : public AttServerMessage {
     }
 
 private:
-    const Span<const uint8_t> _data;
+    const ArrayView<const uint8_t> _data;
 };
 
 
@@ -587,7 +588,7 @@ struct AttReadByGroupTypeResponse : public AttServerMessage {
      */
     struct attribute_data_t {
         attribute_handle_range_t group_range;
-        Span<const uint8_t> value;
+        ArrayView<const uint8_t> value;
     };
 
     /**
@@ -650,7 +651,7 @@ struct AttPrepareWriteResponse : public AttServerMessage {
     AttPrepareWriteResponse(
         attribute_handle_t handle_,
         uint16_t offset_,
-        Span<const uint8_t> value_
+        ArrayView<const uint8_t> value_
     ) : AttServerMessage(AttributeOpcode::PREPARE_WRITE_RESPONSE),
         attribute_handle(handle_),
         offset(offset_),
@@ -670,7 +671,7 @@ struct AttPrepareWriteResponse : public AttServerMessage {
     /**
      * The value of the attribute to be written at the offset indicated.
      */
-    const Span<const uint8_t> partial_value;
+    const ArrayView<const uint8_t> partial_value;
 };
 
 
@@ -711,7 +712,7 @@ struct AttHandleValueNotification : public AttServerMessage {
      */
     AttHandleValueNotification(
         attribute_handle_t attribute_handle,
-        Span<const uint8_t> attribute_value
+        ArrayView<const uint8_t> attribute_value
     ) : AttServerMessage(AttributeOpcode::HANDLE_VALUE_NOTIFICATION),
         attribute_handle(attribute_handle),
         attribute_value(attribute_value) {
@@ -725,7 +726,7 @@ struct AttHandleValueNotification : public AttServerMessage {
     /**
      * The current value of the attribute.
      */
-    const Span<const uint8_t> attribute_value;
+    const ArrayView<const uint8_t> attribute_value;
 };
 
 
@@ -747,7 +748,7 @@ struct AttHandleValueIndication : public AttServerMessage {
      * value indicated.
      */
     AttHandleValueIndication(
-        attribute_handle_t handle, Span<const uint8_t> value
+        attribute_handle_t handle, ArrayView<const uint8_t> value
     ) : AttServerMessage(AttributeOpcode::HANDLE_VALUE_INDICATION),
         attribute_handle(handle), attribute_value(value) {
     }
@@ -760,7 +761,7 @@ struct AttHandleValueIndication : public AttServerMessage {
     /**
      * The current value of the attribute.
      */
-    const Span<const uint8_t> attribute_value;
+    const ArrayView<const uint8_t> attribute_value;
 };
 
 

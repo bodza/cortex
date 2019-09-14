@@ -1,5 +1,5 @@
 /* mbed Microcontroller Library
- * Copyright (c) 2006-2019 ARM Limited
+ * Copyright (c) 2006-2013 ARM Limited
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,9 +28,10 @@ namespace mbed {
 typedef Callback<void()> *pFunctionPointer_t;
 class CallChainLink;
 
+/** \addtogroup platform */
+/** @{*/
 /**
  * \defgroup platform_CallChain CallChain class
- * \ingroup platform-public-api
  * @{
  */
 
@@ -72,9 +73,7 @@ class CallChainLink;
  * }
  * @endcode
  */
-class
-    MBED_DEPRECATED("CallChain has been deprecated and will be removed.")
-    CallChain : private NonCopyable<CallChain> {
+class CallChain : private NonCopyable<CallChain> {
 public:
     /** Create an empty chain
      *  @deprecated
@@ -258,6 +257,9 @@ private:
 
 /**@}*/
 
+/**@}*/
+
 } // namespace mbed
 
 #endif
+

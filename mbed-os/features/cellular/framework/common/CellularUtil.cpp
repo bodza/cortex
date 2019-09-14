@@ -25,7 +25,7 @@
 #define RANDOM_PORT_NUMBER_COUNT (RANDOM_PORT_NUMBER_END - RANDOM_PORT_NUMBER_START + 1)
 #define RANDOM_PORT_NUMBER_MAX_STEP 100
 
-using namespace mbed;
+
 namespace mbed_cellular_util {
 
 void convert_ipv6(char *ip)
@@ -271,20 +271,13 @@ int hex_str_to_char_str(const char *str, uint16_t len, char *buf)
 {
     int strcount = 0;
     for (int i = 0; i + 1 < len; i += 2) {
-        char tmp;
-        hex_to_char(str + i, tmp);
-        buf[strcount] = tmp;
+        int upper = hex_str_to_int(str + i, 1);
+        int lower = hex_str_to_int(str + i + 1, 1);
+        buf[strcount] = ((upper << 4) & 0xF0) | (lower & 0x0F);
         strcount++;
     }
 
     return strcount;
-}
-
-void hex_to_char(const char *hex, char &buf)
-{
-    int upper = hex_str_to_int(hex, 1);
-    int lower = hex_str_to_int(hex + 1, 1);
-    buf = ((upper << 4) & 0xF0) | (lower & 0x0F);
 }
 
 void uint_to_binary_str(uint32_t num, char *str, int str_size, int bit_cnt)
@@ -360,23 +353,6 @@ uint16_t get_dynamic_ip_port()
     port_counter %= RANDOM_PORT_NUMBER_COUNT;
 
     return (RANDOM_PORT_NUMBER_START + port_counter);
-}
-
-pdp_type_t string_to_pdp_type(const char *pdp_type_str)
-{
-    pdp_type_t pdp_type = DEFAULT_PDP_TYPE;
-    int len = strlen(pdp_type_str);
-
-    if (len == 6 && memcmp(pdp_type_str, "IPV4V6", len) == 0) {
-        pdp_type = IPV4V6_PDP_TYPE;
-    } else if (len == 4 && memcmp(pdp_type_str, "IPV6", len) == 0) {
-        pdp_type = IPV6_PDP_TYPE;
-    } else if (len == 2 && memcmp(pdp_type_str, "IP", len) == 0) {
-        pdp_type = IPV4_PDP_TYPE;
-    } else if (len == 6 && memcmp(pdp_type_str, "Non-IP", len) == 0) {
-        pdp_type = NON_IP_PDP_TYPE;
-    }
-    return pdp_type;
 }
 
 } // namespace mbed_cellular_util

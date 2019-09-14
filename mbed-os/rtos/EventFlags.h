@@ -1,5 +1,5 @@
 /* mbed Microcontroller Library
- * Copyright (c) 2006-2019 ARM Limited
+ * Copyright (c) 2006-2017 ARM Limited
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -22,18 +22,16 @@
 #ifndef EVENT_FLAG_H
 #define EVENT_FLAG_H
 
-#include <cstddef>
 #include <stdint.h>
-#include "rtos/mbed_rtos_types.h"
-#include "rtos/mbed_rtos1_types.h"
-#include "rtos/mbed_rtos_storage.h"
+#include "cmsis_os2.h"
+#include "mbed_rtos1_types.h"
+#include "mbed_rtos_storage.h"
 
 #include "platform/NonCopyable.h"
 
 namespace rtos {
-/** \addtogroup rtos-public-api */
+/** \addtogroup rtos */
 /** @{*/
-
 /**
  * \defgroup rtos_EventFlags EventFlags class
  * @{
@@ -114,14 +112,10 @@ public:
     ~EventFlags();
 
 private:
-    void constructor(const char *name = nullptr);
+    void constructor(const char *name = NULL);
     uint32_t wait(uint32_t flags, uint32_t opt, uint32_t millisec, bool clear);
-#if MBED_CONF_RTOS_PRESENT
     osEventFlagsId_t                _id;
     mbed_rtos_storage_event_flags_t _obj_mem;
-#else
-    uint32_t _flags;
-#endif
 };
 
 /** @}*/
@@ -129,3 +123,4 @@ private:
 
 }
 #endif
+

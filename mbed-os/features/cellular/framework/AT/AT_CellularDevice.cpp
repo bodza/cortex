@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-#include "rtos/ThisThread.h"
 #include "CellularUtil.h"
 #include "AT_CellularDevice.h"
 #include "AT_CellularInformation.h"
@@ -45,6 +44,13 @@ AT_CellularDevice::AT_CellularDevice(FileHandle *fh) : CellularDevice(fh), _netw
     MBED_ASSERT(fh);
     _at = get_at_handler(fh);
     MBED_ASSERT(_at);
+
+    if (AT_CellularBase::get_property(AT_CellularBase::PROPERTY_AT_CGEREP)) {
+        _at->set_urc_handler("+CGEV: NW DEACT", callback(this, &AT_CellularDevice::urc_nw_deact));
+        _at->set_urc_handler("+CGEV: ME DEACT", callback(this, &AT_CellularDevice::urc_nw_deact));
+        _at->set_urc_handler("+CGEV: NW PDN D", callback(this, &AT_CellularDevice::urc_pdn_deact));
+        _at->set_urc_handler("+CGEV: ME PDN D", callback(this, &AT_CellularDevice::urc_pdn_deact));
+    }
 }
 
 AT_CellularDevice::~AT_CellularDevice()
@@ -76,29 +82,6 @@ AT_CellularDevice::~AT_CellularDevice()
     }
 
     release_at_handler(_at);
-}
-
-void AT_CellularDevice::set_at_urcs_impl()
-{
-}
-
-void AT_CellularDevice::set_at_urcs()
-{
-    if (AT_CellularBase::get_property(AT_CellularBase::PROPERTY_AT_CGEREP)) {
-        _at->set_urc_handler("+CGEV: NW DEACT", callback(this, &AT_CellularDevice::urc_nw_deact));
-        _at->set_urc_handler("+CGEV: ME DEACT", callback(this, &AT_CellularDevice::urc_nw_deact));
-        _at->set_urc_handler("+CGEV: NW PDN D", callback(this, &AT_CellularDevice::urc_pdn_deact));
-        _at->set_urc_handler("+CGEV: ME PDN D", callback(this, &AT_CellularDevice::urc_pdn_deact));
-    }
-
-    set_at_urcs_impl();
-}
-
-void AT_CellularDevice::setup_at_handler()
-{
-    set_at_urcs();
-
-    _at->set_send_delay(get_send_delay());
 }
 
 void AT_CellularDevice::urc_nw_deact()
@@ -201,11 +184,10 @@ nsapi_error_t AT_CellularDevice::get_sim_state(SimState &state)
     char simstr[MAX_SIM_RESPONSE_LENGTH];
     _at->lock();
     _at->flush();
-    nsapi_error_t error = _at->at_cmd_str("+CPIN", "?", simstr, sizeof(simstr));
-    ssize_t len = strlen(simstr);
-    device_err_t err = _at->get_last_device_error();
-    _at->unlock();
-
+    _at->cmd_start("AT+CPIN?");
+    _at->cmd_stop();
+    _at->resp_start("+CPIN:");
+    ssize_t len = _at->read_string(simstr, sizeof(simstr));
     if (len != -1) {
         if (len >= 5 && memcmp(simstr, "READY", 5) == 0) {
             state = SimStateReady;
@@ -215,12 +197,16 @@ nsapi_error_t AT_CellularDevice::get_sim_state(SimState &state)
             state = SimStatePukNeeded;
         } else {
             simstr[len] = '\0';
+            tr_error("Unknown SIM state %s", simstr);
             state = SimStateUnknown;
         }
     } else {
         tr_warn("SIM not readable.");
         state = SimStateUnknown; // SIM may not be ready yet or +CPIN may be unsupported command
     }
+    _at->resp_stop();
+    nsapi_error_t error = _at->get_last_error();
+    _at->unlock();
 #if MBED_CONF_MBED_TRACE_ENABLE
     switch (state) {
         case SimStatePinNeeded:
@@ -230,11 +216,7 @@ nsapi_error_t AT_CellularDevice::get_sim_state(SimState &state)
             tr_error("SIM PUK required");
             break;
         case SimStateUnknown:
-            if (err.errType == DeviceErrorTypeErrorCME && err.errCode == 14) {
-                tr_info("SIM busy");
-            } else {
-                tr_warn("SIM state unknown");
-            }
+            tr_warn("SIM state unknown");
             break;
         default:
             tr_info("SIM is ready");
@@ -248,7 +230,7 @@ nsapi_error_t AT_CellularDevice::set_pin(const char *sim_pin)
 {
     // if SIM is already in ready state then settings the PIN
     // will return error so let's check the state before settings the pin.
-    SimState state = SimStateUnknown;
+    SimState state;
     if (get_sim_state(state) == NSAPI_ERROR_OK && state == SimStateReady) {
         return NSAPI_ERROR_OK;
     }
@@ -258,14 +240,16 @@ nsapi_error_t AT_CellularDevice::set_pin(const char *sim_pin)
     }
 
     _at->lock();
+    _at->cmd_start("AT+CPIN=");
 
     const bool stored_debug_state = _at->get_debug();
     _at->set_debug(false);
 
-    _at->at_cmd_discard("+CPIN", "=", "%s", sim_pin);
+    _at->write_string(sim_pin);
 
     _at->set_debug(stored_debug_state);
 
+    _at->cmd_stop_read_resp();
     return _at->unlock_return_error();
 }
 
@@ -445,41 +429,43 @@ void AT_CellularDevice::modem_debug_on(bool on)
 
 nsapi_error_t AT_CellularDevice::init()
 {
-    setup_at_handler();
-
     _at->lock();
-    for (int retry = 1; retry <= 3; retry++) {
-        _at->clear_error();
-        _at->flush();
-        _at->at_cmd_discard("E0", "");
-        _at->at_cmd_discard("+CMEE", "=1");
-        _at->at_cmd_discard("+CFUN", "=1");
-        if (_at->get_last_error() == NSAPI_ERROR_OK) {
-            break;
-        }
-        tr_debug("Wait 100ms to init modem");
-        rtos::ThisThread::sleep_for(100); // let modem have time to get ready
-    }
+    _at->flush();
+    _at->cmd_start("ATE0"); // echo off
+    _at->cmd_stop_read_resp();
+
+    _at->cmd_start("AT+CMEE=1"); // verbose responses
+    _at->cmd_stop_read_resp();
+
+    _at->cmd_start("AT+CFUN=1"); // set full functionality
+    _at->cmd_stop_read_resp();
 
     return _at->unlock_return_error();
 }
 
 nsapi_error_t AT_CellularDevice::shutdown()
 {
+    _at->lock();
+    if (_state_machine) {
+        _state_machine->reset();
+    }
     CellularDevice::shutdown();
-
-    return _at->at_cmd_discard("+CFUN", "=0");
+    _at->cmd_start("AT+CFUN=0");// set to minimum functionality
+    _at->cmd_stop_read_resp();
+    return _at->unlock_return_error();
 }
 
 nsapi_error_t AT_CellularDevice::is_ready()
 {
     _at->lock();
-    _at->at_cmd_discard("", "");
+    _at->cmd_start("AT");
+    _at->cmd_stop_read_resp();
 
     // we need to do this twice because for example after data mode the first 'AT' command will give modem a
     // stimulus that we are back to command mode.
     _at->clear_error();
-    _at->at_cmd_discard("", "");
+    _at->cmd_start("AT");
+    _at->cmd_stop_read_resp();
 
     return _at->unlock_return_error();
 }
@@ -494,7 +480,9 @@ nsapi_error_t AT_CellularDevice::set_power_save_mode(int periodic_time, int acti
 
     if (periodic_time == 0 && active_time == 0) {
         // disable PSM
-        _at->at_cmd_discard("+CPSMS", "=0");
+        _at->cmd_start("AT+CPSMS=");
+        _at->write_int(0);
+        _at->cmd_stop_read_resp();
     } else {
         const int PSMTimerBits = 5;
 
@@ -595,8 +583,13 @@ nsapi_error_t AT_CellularDevice::set_power_save_mode(int periodic_time, int acti
         at[8] = '\0';
 
         // request for both GPRS and LTE
-
-        _at->at_cmd_discard("+CPSMS", "=1,", "%s%s%s%s", pt, at, pt, at);
+        _at->cmd_start("AT+CPSMS=");
+        _at->write_int(1);
+        _at->write_string(pt);
+        _at->write_string(at);
+        _at->write_string(pt);
+        _at->write_string(at);
+        _at->cmd_stop_read_resp();
 
         if (_at->get_last_error() != NSAPI_ERROR_OK) {
             tr_warn("Power save mode not enabled!");
@@ -623,13 +616,4 @@ void AT_CellularDevice::cellular_callback(nsapi_event_t ev, intptr_t ptr, Cellul
         }
     }
     CellularDevice::cellular_callback(ev, ptr, ctx);
-}
-
-nsapi_error_t AT_CellularDevice::clear()
-{
-    AT_CellularNetwork *net = static_cast<AT_CellularNetwork *>(open_network());
-    nsapi_error_t err = net->clear();
-    close_network();
-
-    return err;
 }

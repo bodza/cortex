@@ -89,10 +89,11 @@ nsapi_error_t TELIT_ME910::init()
     }
     _at->lock();
 #if defined (MBED_CONF_TELIT_ME910_RTS) && defined (MBED_CONF_TELIT_ME910_CTS)
-    _at->at_cmd_discard("&K3;&C1;&D0", "");
+    _at->cmd_start("AT&K3;&C1;&D0");
 #else
-    _at->at_cmd_discard("&K0;&C1;&D0", "");
+    _at->cmd_start("AT&K0;&C1;&D0");
 #endif
+    _at->cmd_stop_read_resp();
 
     // AT#QSS=1
     // Enable the Query SIM Status unsolicited indication in the ME. The format of the
@@ -103,7 +104,8 @@ nsapi_error_t TELIT_ME910::init()
     // <status> values:
     // - 0: SIM not inserted
     // - 1: SIM inserted
-    _at->at_cmd_discard("#QSS", "=1");
+    _at->cmd_start("AT#QSS=1");
+    _at->cmd_stop_read_resp();
 
     // AT#PSNT=1
     // Set command enables unsolicited result code for packet service network type (PSNT)
@@ -113,7 +115,8 @@ nsapi_error_t TELIT_ME910::init()
     // - 0: GPRS network
     // - 4: LTE network
     // - 5: unknown or not registered
-    _at->at_cmd_discard("#PSNT", "=1");
+    _at->cmd_start("AT#PSNT=1");
+    _at->cmd_stop_read_resp();
 
     // AT+CMER=2
     // Set command enables sending of unsolicited result codes from TA to TE in the case of
@@ -121,7 +124,8 @@ nsapi_error_t TELIT_ME910::init()
     // Current setting: buffer +CIEV Unsolicited Result Codes in the TA when TA-TE link is
     // reserved (e.g. on-line data mode) and flush them to the TE after
     // reservation; otherwise forward them directly to the TE
-    _at->at_cmd_discard("+CMER", "=2");
+    _at->cmd_start("AT+CMER=2");
+    _at->cmd_stop_read_resp();
 
     // AT+CMEE=2
     // Set command disables the use of result code +CME ERROR: <err> as an indication of an
@@ -129,14 +133,16 @@ nsapi_error_t TELIT_ME910::init()
     // ERROR: <err> final result code instead of the default ERROR final result code. ERROR is returned
     // normally when the error message is related to syntax, invalid parameters or DTE functionality.
     // Current setting: enable and use verbose <err> values
-    _at->at_cmd_discard("+CMEE", "=2");
+    _at->cmd_start("AT+CMEE=2");
+    _at->cmd_stop_read_resp();
 
     // AT&W&P
     // - AT&W: Execution command stores on profile <n> the complete configuration of the device. If
     //         parameter is omitted, the command has the same behavior of AT&W0.
     // - AT&P: Execution command defines which full profile will be loaded at startup. If parameter
     //         is omitted, the command has the same behavior as AT&P0
-    _at->at_cmd_discard("&W&P", "");
+    _at->cmd_start("AT&W&P");
+    _at->cmd_stop_read_resp();
 
     return _at->unlock_return_error();
 }

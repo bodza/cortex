@@ -1,5 +1,5 @@
 /* mbed Microcontroller Library
- * Copyright (c) 2006-2019 ARM Limited
+ * Copyright (c) 2006-2012 ARM Limited
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,19 +25,14 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "rtos/mbed_rtos_types.h"
-#include "rtos/mbed_rtos1_types.h"
-#include "rtos/mbed_rtos_storage.h"
+#include "cmsis_os2.h"
+#include "mbed_rtos1_types.h"
+#include "mbed_rtos_storage.h"
 #include "platform/NonCopyable.h"
-#include "platform/mbed_assert.h"
-#include "Kernel.h"
 
-
-#if MBED_CONF_RTOS_PRESENT || defined(DOXYGEN_ONLY)
 namespace rtos {
-/** \addtogroup rtos-public-api */
+/** \addtogroup rtos */
 /** @{*/
-
 /**
  * \defgroup rtos_MemoryPool MemoryPool class
  * @{
@@ -81,7 +76,7 @@ public:
     }
 
     /** Allocate a memory block from a memory pool, without blocking.
-      @return  address of the allocated memory block or nullptr in case of no memory available.
+      @return  address of the allocated memory block or NULL in case of no memory available.
 
       @note You may call this function from ISR context.
     */
@@ -92,7 +87,7 @@ public:
 
     /** Allocate a memory block from a memory pool, optionally blocking.
       @param   millisec  timeout value (osWaitForever to wait forever)
-      @return  address of the allocated memory block or nullptr in case of no memory available.
+      @return  address of the allocated memory block or NULL in case of no memory available.
 
       @note You may call this function from ISR context if the millisec parameter is set to 0.
     */
@@ -103,7 +98,7 @@ public:
 
     /** Allocate a memory block from a memory pool, blocking.
       @param   millisec absolute timeout time, referenced to Kernel::get_ms_count().
-      @return  address of the allocated memory block or nullptr in case of no memory available.
+      @return  address of the allocated memory block or NULL in case of no memory available.
 
       @note You cannot call this function from ISR context.
       @note the underlying RTOS may have a limit to the maximum wait time
@@ -126,14 +121,14 @@ public:
     }
 
     /** Allocate a memory block from a memory pool, without blocking, and set memory block to zero.
-      @return  address of the allocated memory block or nullptr in case of no memory available.
+      @return  address of the allocated memory block or NULL in case of no memory available.
 
       @note You may call this function from ISR context.
     */
     T *calloc(void)
     {
         T *item = alloc();
-        if (item != nullptr) {
+        if (item != NULL) {
             memset(item, 0, sizeof(T));
         }
         return item;
@@ -141,14 +136,14 @@ public:
 
     /** Allocate a memory block from a memory pool, optionally blocking, and set memory block to zero.
       @param   millisec  timeout value (osWaitForever to wait forever)
-      @return  address of the allocated memory block or nullptr in case of no memory available.
+      @return  address of the allocated memory block or NULL in case of no memory available.
 
       @note You may call this function from ISR context if the millisec parameter is set to 0.
     */
     T *calloc_for(uint32_t millisec)
     {
         T *item = alloc_for(millisec);
-        if (item != nullptr) {
+        if (item != NULL) {
             memset(item, 0, sizeof(T));
         }
         return item;
@@ -156,7 +151,7 @@ public:
 
     /** Allocate a memory block from a memory pool, blocking, and set memory block to zero.
       @param   millisec absolute timeout time, referenced to Kernel::get_ms_count().
-      @return  address of the allocated memory block or nullptr in case of no memory available.
+      @return  address of the allocated memory block or NULL in case of no memory available.
 
       @note You cannot call this function from ISR context.
       @note the underlying RTOS may have a limit to the maximum wait time
@@ -167,7 +162,7 @@ public:
     T *calloc_until(uint64_t millisec)
     {
         T *item = alloc_until(millisec);
-        if (item != nullptr) {
+        if (item != NULL) {
             memset(item, 0, sizeof(T));
         }
         return item;
@@ -176,7 +171,7 @@ public:
     /** Free a memory block.
       @param   block  address of the allocated memory block to be freed.
       @return         osOK on successful deallocation, osErrorParameter if given memory block id
-                      is nullptr or invalid, or osErrorResource if given memory block is in an
+                      is NULL or invalid, or osErrorResource if given memory block is in an
                       invalid memory pool state.
 
       @note You may call this function from ISR context.
@@ -193,6 +188,6 @@ private:
 };
 /** @}*/
 /** @}*/
+
 }
-#endif
 #endif

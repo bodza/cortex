@@ -1,5 +1,5 @@
 /* mbed Microcontroller Library
- * Copyright (c) 2006-2019 ARM Limited
+ * Copyright (c) 2006-2013 ARM Limited
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,13 +19,10 @@
 
 #include "platform/platform.h"
 #include "hal/gpio_api.h"
+#include "platform/mbed_critical.h"
 
 namespace mbed {
-/**
- * \defgroup drivers_DigitalOut DigitalOut class
- * \ingroup drivers-public-api-gpio
- * @{
- */
+/** \addtogroup drivers */
 
 /** A digital output, used for setting the state of a pin
  *
@@ -45,6 +42,7 @@ namespace mbed {
  *     }
  * }
  * @endcode
+ * @ingroup drivers
  */
 class DigitalOut {
 
@@ -124,7 +122,13 @@ public:
      * state from the DigitalOut argument.
      * \sa DigitalOut::write()
      */
-    DigitalOut &operator= (DigitalOut &rhs);
+    DigitalOut &operator= (DigitalOut &rhs)
+    {
+        core_util_critical_section_enter();
+        write(rhs.read());
+        core_util_critical_section_exit();
+        return *this;
+    }
 
     /** A shorthand for read()
      * \sa DigitalOut::read()
@@ -145,8 +149,6 @@ protected:
     gpio_t gpio;
 #endif //!defined(DOXYGEN_ONLY)
 };
-
-/** @}*/
 
 } // namespace mbed
 

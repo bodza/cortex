@@ -25,7 +25,7 @@
 #include "mbed_atomic.h"
 #include "mbed_assert.h"
 #include "mbed_error.h"
-#include "ThisThread.h"
+#include "mbed_wait_api.h"
 #include <algorithm>
 #include <string.h>
 #include <stdio.h>
@@ -180,7 +180,9 @@ void NVStore::set_max_keys(uint16_t num_keys)
 {
     uint16_t key = 0, old_max_keys = 0;
 
-    if (num_keys < NVSTORE_NUM_PREDEFINED_KEYS || num_keys >= get_max_possible_keys()) {
+    MBED_ASSERT(num_keys < get_max_possible_keys());
+
+    if (num_keys < NVSTORE_NUM_PREDEFINED_KEYS) {
         return;
     }
 
@@ -197,7 +199,6 @@ void NVStore::set_max_keys(uint16_t num_keys)
     if (num_keys < _max_keys) {
         for (key = num_keys; key < _max_keys; key++) {
             if (_offset_by_key[key] != 0) {
-                _mutex->unlock();
                 return;
             }
         }
@@ -214,12 +215,7 @@ void NVStore::set_max_keys(uint16_t num_keys)
         // Reallocate _offset_by_key with new size
         uint32_t *old_offset_by_key = (uint32_t *) _offset_by_key;
         uint32_t *new_offset_by_key = new uint32_t[_max_keys];
-
         MBED_ASSERT(new_offset_by_key);
-        if (!new_offset_by_key) {
-            _mutex->unlock();
-            return;
-        }
 
         // Copy old content to new table
         memset(new_offset_by_key, 0, sizeof(uint32_t) * _max_keys);
@@ -255,10 +251,6 @@ void NVStore::calc_validate_area_params()
     size_t flash_size = _flash->get_flash_size();
     size_t flash_addr;
     size_t sector_size;
-
-    if (flash_size == 0) {
-        return;
-    }
 
     int area = 0;
     size_t left_size = flash_size;
@@ -304,6 +296,7 @@ void NVStore::calc_validate_area_params()
         _flash_area_params[0].size = 0;
         _flash_area_params[1].size = 0;
         while (area >= 0) {
+            MBED_ASSERT(flash_addr > flash_start_addr);
             sector_size = _flash->get_sector_size(flash_addr - 1);
             flash_addr -= sector_size;
             _flash_area_params[area].size += sector_size;
@@ -837,9 +830,8 @@ int NVStore::init()
     //Check if we are on internal memory && try to set the internal memory for TDBStore use.
     ret = avoid_conflict_nvstore_tdbstore(NVSTORE);
     //NVstore in internal memory can not be initialize when TDBStore is in use
-    if (ret == MBED_ERROR_ALREADY_INITIALIZED) {
-        return ret;
-    }
+    MBED_ASSERT(ret != MBED_ERROR_ALREADY_INITIALIZED);
+
 
     // This handles the case that init function is called by more than one thread concurrently.
     // Only the one who gets the value of 1 in _init_attempts_val will proceed, while others will
@@ -847,31 +839,23 @@ int NVStore::init()
     init_attempts_val = core_util_atomic_incr_u32(&_init_attempts, 1);
     if (init_attempts_val != 1) {
         while (!_init_done) {
-            rtos::ThisThread::sleep_for(1);
+            wait_ms(1);
         }
         return NVSTORE_SUCCESS;
     }
 
     _mutex = new PlatformMutex;
-    if (!_mutex) {
-        return NVSTORE_OS_ERROR;
-    }
+    MBED_ASSERT(_mutex);
 
     _size = (uint32_t) -1;
     _flash = new mbed::FlashIAP;
-    if (!_flash) {
-        return NVSTORE_OS_ERROR;
-    }
-    if (_flash->init() < 0) {
-        return NVSTORE_OS_ERROR;
-    }
+    MBED_ASSERT(_flash);
+    _flash->init();
 
     _min_prog_size = std::max(_flash->get_page_size(), (uint32_t)sizeof(nvstore_record_header_t));
     if (_min_prog_size > sizeof(nvstore_record_header_t)) {
         _page_buf = new uint8_t[_min_prog_size];
-        if (!_page_buf) {
-            return NVSTORE_OS_ERROR;
-        }
+        MBED_ASSERT(_page_buf);
     }
 
     calc_validate_area_params();
@@ -888,9 +872,7 @@ int NVStore::init()
         // Find start of empty space at the end of the area. This serves for both
         // knowing whether the area is empty and for the record traversal at the end.
         ret = calc_empty_space(area, free_space_offset_of_area[area]);
-        if (ret) {
-            return ret;
-        }
+        MBED_ASSERT(!ret);
 
         if (!free_space_offset_of_area[area]) {
             area_state[area] = NVSTORE_AREA_STATE_EMPTY;
@@ -902,9 +884,7 @@ int NVStore::init()
         ret = read_record(area, 0, sizeof(master_rec), &master_rec,
                           actual_size, 0, valid,
                           key, flags, owner, next_offset);
-        if ((ret != NVSTORE_SUCCESS) && (ret != NVSTORE_BUFF_TOO_SMALL)) {
-            return ret;
-        }
+        MBED_ASSERT((ret == NVSTORE_SUCCESS) || (ret == NVSTORE_BUFF_TOO_SMALL));
         if (ret == NVSTORE_BUFF_TOO_SMALL) {
             // Buf too small error means that we have a corrupt master record -
             // treat it as such
@@ -914,9 +894,7 @@ int NVStore::init()
         // We have a non valid master record, in a non-empty area. Just erase the area.
         if ((!valid) || (key != master_record_key)) {
             ret = flash_erase_area(area);
-            if (ret) {
-                return ret;
-            }
+            MBED_ASSERT(!ret);
             area_state[area] = NVSTORE_AREA_STATE_EMPTY;
             continue;
         }
@@ -939,9 +917,7 @@ int NVStore::init()
     }
 
     _offset_by_key = new uint32_t[_max_keys];
-    if (!_offset_by_key) {
-        return NVSTORE_OS_ERROR;
-    }
+    MBED_ASSERT(_offset_by_key);
 
     for (key = 0; key < _max_keys; key++) {
         _offset_by_key[key] = 0;
@@ -951,9 +927,7 @@ int NVStore::init()
     if ((area_state[0] == NVSTORE_AREA_STATE_EMPTY) && (area_state[1] == NVSTORE_AREA_STATE_EMPTY)) {
         _active_area = 0;
         ret = write_master_record(_active_area, 1, _free_space_offset);
-        if (ret != NVSTORE_SUCCESS) {
-            return ret;
-        }
+        MBED_ASSERT(ret == NVSTORE_SUCCESS);
         _init_done = 1;
         return NVSTORE_SUCCESS;
     }
@@ -968,9 +942,7 @@ int NVStore::init()
         }
         _active_area_version = versions[_active_area];
         ret = flash_erase_area(1 - _active_area);
-        if (ret) {
-            return ret;
-        }
+        MBED_ASSERT(!ret);
     }
 
     // Traverse area until reaching the empty space at the end or until reaching a faulty record
@@ -978,9 +950,7 @@ int NVStore::init()
         ret = read_record(_active_area, _free_space_offset, 0, NULL,
                           actual_size, 1, valid,
                           key, flags, owner, next_offset);
-        if (ret != NVSTORE_SUCCESS) {
-            return ret;
-        }
+        MBED_ASSERT(ret == NVSTORE_SUCCESS);
 
         // In case we have a faulty record, this probably means that the system crashed when written.
         // Perform a garbage collection, to make the other area valid.

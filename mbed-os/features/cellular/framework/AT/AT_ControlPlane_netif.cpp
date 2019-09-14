@@ -34,10 +34,12 @@ nsapi_size_or_error_t AT_ControlPlane_netif::send(const void *cpdata, nsapi_size
 {
     //CSODCP
     _at.lock();
+    _at.cmd_start("AT+CSODCP=");
+    _at.write_int(_cid);
+    _at.write_int(cpdata_length);
+    _at.write_bytes((uint8_t *)cpdata, cpdata_length);
 
-    nsapi_size_or_error_t err = _at.at_cmd_discard("+CSODCP", "=", "%d%d%b", _cid, cpdata_length, cpdata, cpdata_length);
-
-    return (err == NSAPI_ERROR_OK) ? cpdata_length : err;
+    return _at.unlock_return_error();
 }
 
 nsapi_size_or_error_t AT_ControlPlane_netif::recv(void *cpdata, nsapi_size_t cpdata_length)
@@ -53,9 +55,8 @@ nsapi_size_or_error_t AT_ControlPlane_netif::recv(void *cpdata, nsapi_size_t cpd
     }
 
     memcpy(cpdata, _recv_buffer, _recv_len);
-    size_t recv = _recv_len;
-    _recv_len = 0;
-    return recv;
+
+    return _recv_len = 0;
 }
 
 void AT_ControlPlane_netif::attach(void (*callback)(void *), void *data)

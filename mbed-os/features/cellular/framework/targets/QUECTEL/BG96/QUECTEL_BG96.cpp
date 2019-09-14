@@ -69,13 +69,11 @@ QUECTEL_BG96::QUECTEL_BG96(FileHandle *fh, PinName pwr, bool active_high, PinNam
       _pwr(pwr, !_active_high),
       _rst(rst, !_active_high)
 {
+    _at->set_urc_handler("+QIURC: \"pdpde",  mbed::Callback<void()>(this, &QUECTEL_BG96::urc_pdpdeact));
+
     AT_CellularBase::set_cellular_properties(cellular_properties);
 }
 
-void QUECTEL_BG96::set_at_urcs_impl()
-{
-    _at->set_urc_handler("+QIURC: \"pdpde",  mbed::Callback<void()>(this, &QUECTEL_BG96::urc_pdpdeact));
-}
 
 AT_CellularNetwork *QUECTEL_BG96::open_network_impl(ATHandler &at)
 {
@@ -97,35 +95,94 @@ void QUECTEL_BG96::set_ready_cb(Callback<void()> callback)
     _at->set_urc_handler(DEVICE_READY_URC, callback);
 }
 
-nsapi_error_t QUECTEL_BG96::soft_power_on()
+nsapi_error_t QUECTEL_BG96::hard_power_on()
 {
     if (_pwr.is_connected()) {
-        tr_info("QUECTEL_BG96::soft_power_on");
-        // check if modem was powered on already
-        if (wake_up()) {
-            return NSAPI_ERROR_OK;
-        }
-        if (!wake_up(true)) {
-            tr_error("Modem not responding");
-            soft_power_off();
-            return NSAPI_ERROR_DEVICE_ERROR;
-        }
+        tr_info("Modem power on");
+        ThisThread::sleep_for(250);
+        _pwr = !_active_high;
+        ThisThread::sleep_for(250); // BG96_Hardware_Design_V1.1 says 100 ms, but 250 ms seems to be more robust
+        _pwr = _active_high;
+        ThisThread::sleep_for(500);
     }
 
     return NSAPI_ERROR_OK;
 }
 
-nsapi_error_t QUECTEL_BG96::soft_power_off()
+nsapi_error_t QUECTEL_BG96::soft_power_on()
 {
-    _at->lock();
-    _at->cmd_start("AT+QPOWD");
-    _at->cmd_stop_read_resp();
-    if (_at->get_last_error() != NSAPI_ERROR_OK) {
-        tr_warn("Force modem off");
-        if (_pwr.is_connected()) {
-            press_button(_pwr, 650); // BG96_Hardware_Design_V1.1: Power off signal at least 650 ms
-        }
+    if (!_rst.is_connected()) {
+        return NSAPI_ERROR_OK;
     }
+
+    tr_info("Reset modem");
+    _rst = !_active_high;
+    ThisThread::sleep_for(100);
+    _rst = _active_high;
+    ThisThread::sleep_for(150 + 460); // RESET_N timeout from BG96_Hardware_Design_V1.1
+    _rst = !_active_high;
+    ThisThread::sleep_for(500);
+
+    // wait for RDY
+    _at->lock();
+    _at->set_at_timeout(10 * 1000);
+    _at->resp_start();
+    _at->set_stop_tag("RDY");
+    bool rdy = _at->consume_to_stop_tag();
+    _at->set_stop_tag(OK);
+    _at->restore_at_timeout();
+
+    if (!rdy) {
+        // check if modem was silently powered on
+        _at->clear_error();
+        _at->set_at_timeout(100);
+        _at->cmd_start("AT");
+        _at->cmd_stop_read_resp();
+        _at->restore_at_timeout();
+    }
+    return _at->unlock_return_error();
+}
+
+nsapi_error_t QUECTEL_BG96::hard_power_off()
+{
+    if (_pwr.is_connected()) {
+        tr_info("Modem power off");
+        _pwr = _active_high;
+        ThisThread::sleep_for(650); // from BG96_Hardware_Design_V1.1
+        _pwr = !_active_high;
+    }
+
+    return NSAPI_ERROR_OK;
+}
+
+nsapi_error_t QUECTEL_BG96::init()
+{
+    int retry = 0;
+
+    _at->lock();
+    _at->flush();
+    _at->cmd_start("ATE0"); // echo off
+    _at->cmd_stop_read_resp();
+
+    _at->cmd_start("AT+CMEE=1"); // verbose responses
+    _at->cmd_stop_read_resp();
+
+    if (_at->get_last_error() != NSAPI_ERROR_OK) {
+        return _at->unlock_return_error();
+    }
+
+    do {
+        _at->clear_error();
+        _at->cmd_start("AT+CFUN=1"); // set full functionality
+        _at->cmd_stop_read_resp();
+        if (_at->get_last_error() == NSAPI_ERROR_OK) {
+            break;
+        }
+        // wait some time that modem gets ready for CFUN command, and try again
+        retry++;
+        ThisThread::sleep_for(64); // experimental value
+    } while (retry < 3);
+
     return _at->unlock_return_error();
 }
 
@@ -157,53 +214,4 @@ void QUECTEL_BG96::urc_pdpdeact()
         return;
     }
     send_disconnect_to_context(cid);
-}
-
-void QUECTEL_BG96::press_button(DigitalOut &button, uint32_t timeout)
-{
-    if (!button.is_connected()) {
-        return;
-    }
-    button = _active_high;
-    ThisThread::sleep_for(timeout);
-    button = !_active_high;
-}
-
-bool QUECTEL_BG96::wake_up(bool reset)
-{
-    // check if modem is already ready
-    _at->lock();
-    _at->flush();
-    _at->set_at_timeout(30);
-    _at->cmd_start("AT");
-    _at->cmd_stop_read_resp();
-    nsapi_error_t err = _at->get_last_error();
-    _at->restore_at_timeout();
-    _at->unlock();
-    // modem is not responding, power it on
-    if (err != NSAPI_ERROR_OK) {
-        if (!reset) {
-            // BG96_Hardware_Design_V1.1 requires VBAT to be stable over 30 ms, that's handled above
-            tr_info("Power on modem");
-            press_button(_pwr, 250); // BG96_Hardware_Design_V1.1 requires time 100 ms, but 250 ms seems to be more robust
-        } else {
-            tr_warn("Reset modem");
-            press_button(_rst, 150); // BG96_Hardware_Design_V1.1 requires RESET_N timeout at least 150 ms
-        }
-        _at->lock();
-        // According to BG96_Hardware_Design_V1.1 USB is active after 4.2s, but it seems to take over 5s
-        _at->set_at_timeout(6000);
-        _at->resp_start();
-        _at->set_stop_tag("RDY");
-        bool rdy = _at->consume_to_stop_tag();
-        _at->set_stop_tag(OK);
-        _at->restore_at_timeout();
-        _at->unlock();
-        if (!rdy) {
-            return false;
-        }
-    }
-
-    // sync to check that AT is really responsive and to clear garbage
-    return _at->sync(500);
 }

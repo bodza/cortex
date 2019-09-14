@@ -178,19 +178,6 @@ struct tfm_thrd_ctx *tfm_thrd_curr_thread(void);
 struct tfm_thrd_ctx *tfm_thrd_next_thread(void);
 
 /*
- * Start scheduler for existing threads
- *
- * Parameters:
- *  pth         -     pointer of the caller context collecting thread
- *
- * Notes :
- *  This function should be called only ONCE to start the scheduler.
- *  Caller needs to provide a thread object to collect current context.
- *  The usage of the collected context is caller defined.
- */
-void tfm_thrd_start_scheduler(struct tfm_thrd_ctx *pth);
-
-/*
  * Activate a scheduling action after exception.
  *
  * Notes :
@@ -214,19 +201,23 @@ void tfm_thrd_context_switch(struct tfm_state_context_ext *ctxb,
                              struct tfm_thrd_ctx *next);
 
 /*
- * Svcall to exit current running thread.
+ * Exit current running thread.
  *
  * Notes :
  *  Remove current thread out of schedulable list.
  */
-void tfm_svcall_thrd_exit(void);
+void tfm_thrd_do_exit(void);
 
 /*
- * Exit current running thread for client.
+ * PendSV specified function.
+ *
+ * Parameters :
+ *  ctxb        -    State context storage pointer
  *
  * Notes:
- *  Must be called in thread mode.
+ *  This is a staging API. Scheduler should be called in SPM finally and
+ *  this function will be obsoleted later.
  */
-void tfm_thrd_exit(void);
+void tfm_pendsv_do_schedule(struct tfm_state_context_ext *ctxb);
 
 #endif

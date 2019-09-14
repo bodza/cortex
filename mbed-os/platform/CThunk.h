@@ -1,4 +1,18 @@
-/* Copyright (c) 2014-2019 ARM Limited
+
+/** \addtogroup platform */
+/** @{*/
+/**
+ * \defgroup platform_CThunk CThunk class
+ * @{
+ */
+/* General C++ Object Thunking class
+ *
+ * - allows direct callbacks to non-static C++ class functions
+ * - keeps track for the corresponding class instance
+ * - supports an optional context parameter for the called function
+ * - ideally suited for class object receiving interrupts (NVIC_SetVector)
+ *
+ * Copyright (c) 2014-2015 ARM Limited
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,15 +28,6 @@
  * limitations under the License.
  */
 
-
-/** \addtogroup platform-public-api */
-/** @{*/
-
-/**
- * \defgroup platform_CThunk CThunk class
- * @{
- */
-
 /* General C++ Object Thunking class
  *
  * - allows direct callbacks to non-static C++ class functions
@@ -34,7 +39,7 @@
 #ifndef __CTHUNK_H__
 #define __CTHUNK_H__
 
-#include "platform/internal/CThunkBase.h"
+#include "CThunkBase.h"
 
 /**
  * Class for created a pointer with data bound to it
@@ -42,7 +47,7 @@
  * @note Synchronization level: Not protected
  */
 template<class T>
-class CThunk: private CThunkBase {
+class CThunk: public CThunkBase {
 public:
     typedef void (T::*CCallbackSimple)(void);
     typedef void (T::*CCallback)(void *context);

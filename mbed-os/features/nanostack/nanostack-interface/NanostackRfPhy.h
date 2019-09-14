@@ -18,10 +18,10 @@
 #ifndef NANOSTACK_RF_PHY_H_
 #define NANOSTACK_RF_PHY_H_
 
-#include "NanostackMACPhy.h"
+#include "NanostackPhy.h"
 
 /** Radio PHY driver class for Nanostack */
-class NanostackRfPhy : public NanostackMACPhy {
+class NanostackRfPhy : public NanostackPhy {
 public:
 
     /** Return the default on-board NanostackRfPhy

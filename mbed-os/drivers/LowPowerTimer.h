@@ -26,15 +26,12 @@
 #include "hal/lp_ticker_api.h"
 
 namespace mbed {
-/**
- * \defgroup drivers_LowPowerTimer LowPowerTimer class
- * \ingroup drivers-public-api-ticker
- * @{
- */
+/** \addtogroup drivers */
 
 /** Low power timer
  *
  * @note Synchronization level: Interrupt safe
+ * @ingroup drivers
  */
 class LowPowerTimer : public Timer, private NonCopyable<LowPowerTimer> {
 
@@ -44,8 +41,6 @@ public:
     }
 
 };
-
-/** @}*/
 
 } // namespace mbed
 

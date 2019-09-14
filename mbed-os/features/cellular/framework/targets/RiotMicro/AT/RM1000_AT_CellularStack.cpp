@@ -103,17 +103,29 @@ nsapi_error_t RM1000_AT_CellularStack::create_socket_impl(CellularSocket *socket
 
     int sock_id = SOCKET_UNUSED;
 
-    nsapi_error_t err = NSAPI_ERROR_OK;
+    _at.lock();
     if (socket->proto == NSAPI_UDP) {
-        err = _at.at_cmd_int("+RSOCR", "=0", sock_id);
+        _at.cmd_start("AT+RSOCR=0");
+        _at.cmd_stop();
+
+        _at.resp_start("+RSOCR:");
+        sock_id = _at.read_int();
+        _at.resp_stop();
     } else if (socket->proto == NSAPI_TCP) {
-        err = _at.at_cmd_int("+RSOCR", "=1", sock_id);
+        _at.cmd_start("AT+RSOCR=1");
+        _at.cmd_stop();
+
+        _at.resp_start("+RSOCR:");
+        sock_id = _at.read_int();
+        _at.resp_stop();
     } // Unsupported protocol is checked in "is_protocol_supported" function
 
-    if ((err != NSAPI_ERROR_OK) || (sock_id == -1)) {
-        tr_error("RM1000_AT_CellularStack::create_socket_impl error sock_id=%d err=%d", sock_id, err);
+    if ((_at.get_last_error() != NSAPI_ERROR_OK) || (sock_id == -1)) {
+        _at.unlock();
+        tr_error("RM1000_AT_CellularStack::create_socket_impl error sock_id=%d err=%d", sock_id, _at.get_last_error());
         return NSAPI_ERROR_NO_SOCKET;
     }
+    _at.unlock();
 
     // Check for duplicate socket id delivered by modem
     for (int i = 0; i < RM1000_MAX_SOCKET; i++) {
@@ -125,7 +137,7 @@ nsapi_error_t RM1000_AT_CellularStack::create_socket_impl(CellularSocket *socket
 
     socket->id = sock_id;
 
-    return err;
+    return NSAPI_ERROR_OK;
 }
 
 nsapi_error_t RM1000_AT_CellularStack::socket_connect(nsapi_socket_t handle, const SocketAddress &addr)
@@ -246,7 +258,10 @@ nsapi_size_or_error_t RM1000_AT_CellularStack::socket_recvfrom_impl(CellularSock
             read_blk = size;
         }
         if (socket->pending_bytes > 0) {
-            _at.cmd_start_stop("+RSORCV", "=", "%d%d", socket->id, read_blk);
+            _at.cmd_start("AT+RSORCV=");
+            _at.write_int(socket->id);
+            _at.write_int(read_blk);
+            _at.cmd_stop();
 
             _at.resp_start("+RSORCV:");
             _at.skip_param(); // receiving socket id
@@ -308,7 +323,11 @@ nsapi_error_t RM1000_AT_CellularStack::socket_close_impl(int sock_id)
 {
     tr_debug("RM1000_AT_CellularStack::socket_close_impl");
 
-    return _at.at_cmd_discard("+RSOCL", "=", "%d", sock_id);
+    _at.cmd_start("AT+RSOCL=");
+    _at.write_int(sock_id);
+    _at.cmd_stop_read_resp();
+
+    return _at.get_last_error();
 }
 
 // Clear out the storage for a socket

@@ -26,6 +26,7 @@
 #include "ble/pal/SigningEventMonitor.h"
 #include "ble/generic/GenericGap.h"
 #include "ble/pal/PalSecurityManager.h"
+#include "ble/ArrayView.h"
 
 namespace ble {
 namespace generic {
@@ -472,7 +473,7 @@ private:
      * @param count Number of identities entries retrieved.
      */
     void on_identity_list_retrieved(
-        Span<SecurityEntryIdentity_t>& identity_list,
+        ble::ArrayView<SecurityEntryIdentity_t>& identity_list,
         size_t count
     );
 

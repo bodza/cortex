@@ -45,14 +45,15 @@ t_cose_crypto_pub_key_sign(int32_t cose_alg_id,
 
     (void)key_select;
 
-    psa_key_handle_t handle;
+    const psa_key_id_t key_id = PSA_ATTESTATION_PRIVATE_KEY_ID;
+    psa_key_handle_t handle = 0;
 
     if (sig_size > signature_buffer.len)
     {
         return T_COSE_ERR_SIG_BUFFER_SIZE;
     }
 
-    crypto_ret = psa_open_key(PSA_ATTESTATION_PRIVATE_KEY_ID, &handle);
+    crypto_ret = psa_open_key(PSA_KEY_LIFETIME_PERSISTENT, key_id, &handle);
     if (crypto_ret != PSA_SUCCESS)
     {
         return T_COSE_ERR_NO_KID;

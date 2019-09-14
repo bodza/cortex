@@ -1,5 +1,5 @@
 /* mbed Microcontroller Library
- * Copyright (c) 2006-2019 ARM Limited
+ * Copyright (c) 2006-2013 ARM Limited
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,21 +26,7 @@
 #include "platform/PlatformMutex.h"
 
 namespace mbed {
-/** \defgroup mbed-os-public Public API */
-
-/** \defgroup drivers-public-api Drivers
- * \ingroup mbed-os-public
- */
-
-/** \defgroup drivers-public-api-gpio GPIO
- * \ingroup drivers-public-api
- */
-
-/**
- * \defgroup drivers_AnalogIn AnalogIn class
- * \ingroup drivers-public-api-gpio
- * @{
- */
+/** \addtogroup drivers */
 
 /** An analog input, used for reading the voltage on a pin
  *
@@ -62,6 +48,7 @@ namespace mbed {
  *     }
  * }
  * @endcode
+ * @ingroup drivers
  */
 class AnalogIn {
 
@@ -71,20 +58,37 @@ public:
      *
      * @param pin AnalogIn pin to connect to
      */
-    AnalogIn(PinName pin);
+    AnalogIn(PinName pin)
+    {
+        lock();
+        analogin_init(&_adc, pin);
+        unlock();
+    }
 
     /** Read the input voltage, represented as a float in the range [0.0, 1.0]
      *
      * @returns A floating-point value representing the current input voltage, measured as a percentage
      */
-    float read();
+    float read()
+    {
+        lock();
+        float ret = analogin_read(&_adc);
+        unlock();
+        return ret;
+    }
 
     /** Read the input voltage, represented as an unsigned short in the range [0x0, 0xFFFF]
      *
      * @returns
      *   16-bit unsigned short representing the current input voltage, normalized to a 16-bit value
      */
-    unsigned short read_u16();
+    unsigned short read_u16()
+    {
+        lock();
+        unsigned short ret = analogin_read_u16(&_adc);
+        unlock();
+        return ret;
+    }
 
     /** An operator shorthand for read()
      *
@@ -125,10 +129,7 @@ protected:
     analogin_t _adc;
     static SingletonPtr<PlatformMutex> _mutex;
 #endif //!defined(DOXYGEN_ONLY)
-
 };
-
-/** @}*/
 
 } // namespace mbed
 

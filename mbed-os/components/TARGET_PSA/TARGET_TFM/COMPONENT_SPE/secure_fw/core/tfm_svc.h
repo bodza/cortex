@@ -23,7 +23,6 @@ typedef enum {
 #ifdef TFM_PSA_API
     TFM_SVC_IPC_REQUEST,
     TFM_SVC_SCHEDULE,
-    TFM_SVC_EXIT_THRD,
     /* PSA Client SVC */
     TFM_SVC_PSA_FRAMEWORK_VERSION,
     TFM_SVC_PSA_VERSION,

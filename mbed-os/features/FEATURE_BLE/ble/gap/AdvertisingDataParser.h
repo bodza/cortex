@@ -19,6 +19,7 @@
 
 #include <stdint.h>
 #include "ble/gap/AdvertisingDataTypes.h"
+#include "platform/Span.h"
 
 namespace ble {
 

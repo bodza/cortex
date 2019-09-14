@@ -1,4 +1,4 @@
-/* Copyright (c) 2017-2019 ARM Limited
+/* Copyright (c) 2017 ARM Limited
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,15 +18,14 @@
 #define MBED_NONCOPYABLE_H_
 
 #if (!defined(MBED_DEBUG) && (MBED_CONF_PLATFORM_FORCE_NON_COPYABLE_ERROR == 0))
-#include "platform/mbed_toolchain.h"
-#include "platform/mbed_debug.h"
+#include "mbed_toolchain.h"
+#include "mbed_debug.h"
 #endif
 
 namespace mbed {
 
-/** \addtogroup platform-public-api */
+/** \addtogroup platform */
 /** @{*/
-
 /**
  * \defgroup platform_NonCopyable NonCopyable class
  * @{

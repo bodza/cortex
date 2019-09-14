@@ -18,7 +18,7 @@
 #include <time.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include "ThisThread.h"
+#include "mbed_wait_api.h"
 #include "AT_CellularSMS.h"
 #include "CellularUtil.h"
 #include "CellularLog.h"
@@ -26,7 +26,6 @@
 using namespace mbed_cellular_util;
 using namespace mbed;
 using namespace std;
-using namespace rtos;
 
 #define CTRL_Z  "\x1a"
 #define ESC     "\x1b"
@@ -42,7 +41,7 @@ const uint8_t SMS_MAX_GSM7_CONCATENATED_SINGLE_SMS_SIZE = 153;
 #define NVAM '?' // Not Valid ascii, ISO-8859-1 mark
 
 // mapping table from 7-bit GSM to ascii (ISO-8859-1)
-static const unsigned char gsm_to_ascii[] = {
+static const char gsm_to_ascii[] = {
     64,     // 0
     163,    // 1
     36,     // 2
@@ -188,7 +187,7 @@ void AT_CellularSMS::cmt_urc()
 {
     tr_debug("CMT_URC called");
     //+CMT: <oa>,[<alpha>],<scts>[,<tooa>,<fo>,<pid>,<dcs>,<sca>,<tosca>,<length>]<CR><LF><data>
-    (void)_at.consume_to_stop_tag();
+    _at.consume_to_stop_tag();
     // call user defined callback function
     if (_cb) {
         _cb();
@@ -214,8 +213,10 @@ nsapi_error_t AT_CellularSMS::set_cnmi()
     if (!get_property(PROPERTY_AT_CNMI)) {
         return NSAPI_ERROR_UNSUPPORTED;
     }
-
-    return _at.at_cmd_discard("+CNMI", "=2,1");
+    _at.lock();
+    _at.cmd_start("AT+CNMI=2,1");
+    _at.cmd_stop_read_resp();
+    return _at.unlock_return_error();
 }
 
 nsapi_error_t AT_CellularSMS::set_cmgf(int msg_format)
@@ -223,8 +224,11 @@ nsapi_error_t AT_CellularSMS::set_cmgf(int msg_format)
     if (!get_property(PROPERTY_AT_CMGF)) {
         return NSAPI_ERROR_UNSUPPORTED;
     }
-
-    return _at.at_cmd_discard("+CMGF", "=", "%d", msg_format);
+    _at.lock();
+    _at.cmd_start("AT+CMGF=");
+    _at.write_int(msg_format);
+    _at.cmd_stop_read_resp();
+    return _at.unlock_return_error();
 }
 
 nsapi_error_t AT_CellularSMS::set_csmp(int fo, int vp, int pid, int dcs)
@@ -232,8 +236,14 @@ nsapi_error_t AT_CellularSMS::set_csmp(int fo, int vp, int pid, int dcs)
     if (!get_property(PROPERTY_AT_CSMP)) {
         return NSAPI_ERROR_UNSUPPORTED;
     }
-
-    return _at.at_cmd_discard("+CSMP", "=", "%d%d%d%d", fo, vp, pid, dcs);
+    _at.lock();
+    _at.cmd_start("AT+CSMP=");
+    _at.write_int(fo);
+    _at.write_int(vp);
+    _at.write_int(pid);
+    _at.write_int(dcs);
+    _at.cmd_stop_read_resp();
+    return _at.unlock_return_error();
 }
 
 nsapi_error_t AT_CellularSMS::set_csdh(int show_header)
@@ -241,15 +251,15 @@ nsapi_error_t AT_CellularSMS::set_csdh(int show_header)
     if (!get_property(PROPERTY_AT_CSDH)) {
         return NSAPI_ERROR_UNSUPPORTED;
     }
-
-    return _at.at_cmd_discard("+CSDH", "=", "%d", show_header);
+    _at.lock();
+    _at.cmd_start("AT+CSDH=");
+    _at.write_int(show_header);
+    _at.cmd_stop_read_resp();
+    return _at.unlock_return_error();
 }
 
-nsapi_error_t AT_CellularSMS::initialize(CellularSMSMmode mode,
-                                         CellularSMSEncoding encoding)
+nsapi_error_t AT_CellularSMS::initialize(CellularSMSMmode mode)
 {
-    _use_8bit_encoding = (encoding == CellularSMSEncoding8Bit);
-
     _at.set_urc_handler("+CMTI:", callback(this, &AT_CellularSMS::cmti_urc));
     _at.set_urc_handler("+CMT:", callback(this, &AT_CellularSMS::cmt_urc));
 
@@ -277,10 +287,6 @@ char *AT_CellularSMS::create_pdu(const char *phone_number, const char *message, 
                                  uint8_t msg_part_number, uint8_t &header_size)
 {
     int totalPDULength = 0;
-    const bool is_number_international = (phone_number[0] == '+');
-    if (is_number_international) {
-        ++phone_number;
-    }
     int number_len = strlen(phone_number);
 
     totalPDULength += number_len;
@@ -295,11 +301,8 @@ char *AT_CellularSMS::create_pdu(const char *phone_number, const char *message, 
     // there might be need for padding so some more space
     totalPDULength += 2;
 
-    // 8-bit message, converted to hex so it will take twice as much space
-    totalPDULength += message_length * 2;
-
-    // terminating nullbyte, because callers use strlen() to find out PDU size
-    totalPDULength += 1;
+    // message 7-bit padded and it will be converted to hex so it will take twice as much space
+    totalPDULength += (message_length - (message_length / 8)) * 2;
 
     char *pdu = new char[totalPDULength];
     memset(pdu, 0, totalPDULength);
@@ -323,11 +326,7 @@ char *AT_CellularSMS::create_pdu(const char *phone_number, const char *message, 
     int_to_hex_str(number_len, pdu + x);
     x += 2;
     // Type of the Destination Phone Number
-    if (is_number_international) {
-        pdu[x++] = '9'; // international
-    } else {
-        pdu[x++] = '8'; // unknown
-    }
+    pdu[x++] = '8';
     pdu[x++] = '1';
 
     // phone number as reverse nibble encoded
@@ -409,8 +408,7 @@ char *AT_CellularSMS::create_pdu(const char *phone_number, const char *message, 
 
 nsapi_size_or_error_t AT_CellularSMS::send_sms(const char *phone_number, const char *message, int msg_len)
 {
-    int single_sms_max_length = _use_8bit_encoding ?
-                                SMS_MAX_SIZE_8BIT_SINGLE_SMS_SIZE :
+    int single_sms_max_length = _use_8bit_encoding ? SMS_MAX_SIZE_8BIT_SINGLE_SMS_SIZE :
                                 SMS_MAX_SIZE_GSM7_SINGLE_SMS_SIZE;
     if ((_mode == CellularSMSMmodeText && msg_len > single_sms_max_length) || !phone_number) {
         return NSAPI_ERROR_PARAMETER;
@@ -419,13 +417,16 @@ nsapi_size_or_error_t AT_CellularSMS::send_sms(const char *phone_number, const c
     _at.lock();
 
     int write_size = 0;
+    int remove_plus_sign = (phone_number[0] == '+') ? 1 : 0;
 
-    ThisThread::sleep_for(_sim_wait_time);
+    wait_ms(_sim_wait_time);
 
     if (_mode == CellularSMSMmodeText) {
-        _at.cmd_start_stop("+CMGS", "=", "%s", phone_number);
+        _at.cmd_start("AT+CMGS=");
+        _at.write_string(phone_number + remove_plus_sign);
+        _at.cmd_stop();
 
-        ThisThread::sleep_for(_sim_wait_time);
+        wait_ms(_sim_wait_time);
         _at.resp_start("> ", true);
 
         if (_at.get_last_error() == NSAPI_ERROR_OK) {
@@ -447,8 +448,7 @@ nsapi_size_or_error_t AT_CellularSMS::send_sms(const char *phone_number, const c
         // supports uncompressed 8 bit data and GSM 7 bit default alphabet data. Current implementation uses only
         // GSM 7 bit default but support is done for 8 bit data.
         int sms_count;
-        int concatenated_sms_length = _use_8bit_encoding ?
-                                      SMS_MAX_8BIT_CONCATENATED_SINGLE_SMS_SIZE :
+        int concatenated_sms_length = _use_8bit_encoding ? SMS_MAX_8BIT_CONCATENATED_SINGLE_SMS_SIZE :
                                       SMS_MAX_GSM7_CONCATENATED_SINGLE_SMS_SIZE;
 
         if (msg_len <= single_sms_max_length) {
@@ -476,7 +476,7 @@ nsapi_size_or_error_t AT_CellularSMS::send_sms(const char *phone_number, const c
                 pdu_len = remaining_len > concatenated_sms_length ? concatenated_sms_length : remaining_len;
             }
 
-            pdu_str = create_pdu(phone_number, message + i * concatenated_sms_length, pdu_len,
+            pdu_str = create_pdu(phone_number + remove_plus_sign, message + i * concatenated_sms_length, pdu_len,
                                  sms_count, i + 1, header_len);
             if (!pdu_str) {
                 _at.unlock();
@@ -485,10 +485,11 @@ nsapi_size_or_error_t AT_CellularSMS::send_sms(const char *phone_number, const c
             pdu_len = strlen(pdu_str);
 
             // specification says that service center number should not be included so we subtract -2 from pdu_len as we use '00' for automatic service center number
+            _at.cmd_start("AT+CMGS=");
+            _at.write_int((pdu_len - 2) / 2);
+            _at.cmd_stop();
 
-            _at.cmd_start_stop("+CMGS", "=", "%d", (pdu_len - 2) / 2);
-
-            ThisThread::sleep_for(_sim_wait_time);
+            wait_ms(_sim_wait_time);
             _at.resp_start("> ", true);
 
             if (_at.get_last_error() == NSAPI_ERROR_OK) {
@@ -539,24 +540,44 @@ void AT_CellularSMS::set_sms_callback(Callback<void()> func)
 
 nsapi_error_t AT_CellularSMS::set_cpms(const char *memr, const char *memw, const char *mems)
 {
-    return _at.at_cmd_discard("+CPMS", "=", "%s%s%s", memr, memw, mems);
+    _at.lock();
+    _at.cmd_start("AT+CPMS=");
+    _at.write_string(memr);
+    _at.write_string(memw);
+    _at.write_string(mems);
+    _at.cmd_stop_read_resp();
+
+    return _at.unlock_return_error();
 }
 
 nsapi_error_t AT_CellularSMS::set_csca(const char *sca, int type)
 {
-    return _at.at_cmd_discard("+CSCA", "=", "%s%d", sca, type);
+    _at.lock();
+    _at.cmd_start("AT+CSCA=");
+    _at.write_string(sca);
+    _at.write_int(type);
+    _at.cmd_stop_read_resp();
+
+    return _at.unlock_return_error();
 }
 
 nsapi_size_or_error_t AT_CellularSMS::set_cscs(const char *chr_set)
 {
-    return _at.at_cmd_discard("+CSCS", "=", "%s", chr_set);
+    _at.lock();
+    _at.cmd_start("AT+CSCS=");
+    _at.write_string(chr_set);
+    _at.cmd_stop_read_resp();
+
+    return _at.unlock_return_error();
 }
 
 nsapi_error_t AT_CellularSMS::delete_sms(sms_info_t *sms)
 {
     _at.lock();
     for (int i = 0; i < sms->parts; i++) {
-        _at.at_cmd_discard("+CMGD", "=", "%d", sms->msg_index[i]);
+        _at.cmd_start("AT+CMGD=");
+        _at.write_int(sms->msg_index[i]);
+        _at.cmd_stop_read_resp();
     }
 
     return _at.unlock_return_error();
@@ -568,7 +589,10 @@ nsapi_error_t AT_CellularSMS::delete_sms(sms_info_t *sms)
 // that was corrupted. So we need to have delete all messages.
 nsapi_error_t AT_CellularSMS::delete_all_messages()
 {
-    return _at.at_cmd_discard("+CMGD", "=1,4");
+    _at.lock();
+    _at.cmd_start("AT+CMGD=1,4");
+    _at.cmd_stop_read_resp();
+    return _at.unlock_return_error();
 }
 
 // read msg in text mode
@@ -578,8 +602,10 @@ nsapi_size_or_error_t AT_CellularSMS::read_sms_from_index(int msg_index, char *b
     /*
      * +CMGR: <stat>,<oa>,<alpha>,<scts>[,<tooa>,<fo>,<pid>,<dcs>,<sca>,<tosca>,<length>]<CR><LF><data><CR><LF>OK<CR><LF>
      */
-    ThisThread::sleep_for(_sim_wait_time);
-    _at.cmd_start_stop("+CMGR", "=", "%d", msg_index);
+    wait_ms(_sim_wait_time);
+    _at.cmd_start("AT+CMGR=");
+    _at.write_int(msg_index);
+    _at.cmd_stop();
 
     // TODO: NOTE:    If the selected <mem1> can contain different types of SMs (e.g. SMS-DELIVERs, SMS-SUBMITs, SMS-STATUS-REPORTs and SMS-COMMANDs),
     // the response may be a mix of the responses of different SM types. TE application can recognize the response format by examining the third response parameter.
@@ -635,8 +661,10 @@ nsapi_size_or_error_t AT_CellularSMS::read_sms(sms_info_t *sms, char *buf, char 
         int pduSize;
 
         for (int i = 0; i < sms->parts; i++) {
-            ThisThread::sleep_for(_sim_wait_time);
-            _at.cmd_start_stop("+CMGR", "=", "%d", sms->msg_index[i]);
+            wait_ms(_sim_wait_time);
+            _at.cmd_start("AT+CMGR=");
+            _at.write_int(sms->msg_index[i]);
+            _at.cmd_stop();
             _at.resp_start("+CMGR:");
 
             if (_at.info_resp()) {
@@ -758,7 +786,7 @@ nsapi_size_or_error_t AT_CellularSMS::get_data_from_pdu(const char *pdu, sms_inf
     // read first the lower part of first octet as there is message type
     index++;
     tmp = hex_str_to_int(pdu + index, 1);
-    //ThisThread::sleep_for(200);
+    //wait_ms(200);
     if ((tmp & 0x03) == 0) {// SMS-DELIVER type, last two bits should be zero
         // UDH present? Check from first octets higher part
         tmp = hex_str_to_int(pdu + (--index), 1);
@@ -1013,10 +1041,11 @@ nsapi_error_t AT_CellularSMS::list_messages()
     // the response may be a mix of the responses of different SM types. TE application can recognize the response format by examining the third response parameter.
     // for now we assume that only SMS-DELIVER messages are read.
     if (_mode == CellularSMSMmodePDU) {
-        _at.cmd_start_stop("+CMGL", "=4");
+        _at.cmd_start("AT+CMGL=4");
     } else {
-        _at.cmd_start_stop("+CMGL", "=\"ALL\"");
+        _at.cmd_start("AT+CMGL=\"ALL\"");
     }
+    _at.cmd_stop();
 
     sms_info_t *info = NULL;
     // init for 1 so that in text mode we will add to the correct place without any additional logic in addInfo() in text mode
@@ -1050,7 +1079,7 @@ nsapi_error_t AT_CellularSMS::list_messages()
             (void)_at.consume_to_stop_tag(); // consume until <CR><LF>
         }
 
-        if (index >= 0) {
+        if (index > 0) {
             add_info(info, index, part_number);
         } else {
             delete info;
@@ -1085,7 +1114,7 @@ AT_CellularSMS::sms_info_t *AT_CellularSMS::get_oldest_sms_index()
     nsapi_size_or_error_t err = 0;
     while (current) {
         if (_mode == CellularSMSMmodeText) {
-            ThisThread::sleep_for(_sim_wait_time);
+            wait_ms(_sim_wait_time);
             err = read_sms_from_index(current->msg_index[0], NULL, 0, NULL, current->date);
             if (err != 0) {
                 return NULL;
@@ -1114,7 +1143,7 @@ int AT_CellularSMS::compare_time_strings(const char *time_string_1, const char *
     int retVal = -2;
 
     if (success) {
-        time_t diff = t1 - t2;
+        double diff = difftime(t1, t2);
 
         if (diff > 0) {
             retVal = 1;
@@ -1140,7 +1169,7 @@ bool AT_CellularSMS::create_time(const char *time_string, time_t *time)
                &time_struct.tm_hour, &time_struct.tm_min, &time_struct.tm_sec, &sign, &gmt) == kNumberOfElements) {
         *time = mktime(&time_struct);
         // add timezone as seconds. gmt is in quarter of hours.
-        int x = (60 / 4) * 60 * gmt;
+        int x = 60 * 60 * gmt * 0.25;
         if (sign == '+') {
             *time += x;
         } else {
@@ -1167,7 +1196,7 @@ uint16_t AT_CellularSMS::pack_7_bit_gsm_and_hex(const char *str, uint16_t len, c
     char *gsm_str = new char[len];
     for (uint16_t y = 0; y < len; y++) {
         for (int x = 0; x < GSM_TO_ASCII_TABLE_SIZE; x++) {
-            if (gsm_to_ascii[x] == static_cast<unsigned char>(str[y])) {
+            if (gsm_to_ascii[x] == str[y]) {
                 gsm_str[y] = x;
             }
         }
@@ -1218,7 +1247,7 @@ uint16_t AT_CellularSMS::unpack_7_bit_gsm_to_str(const char *str, int len, char 
     char tmp1;
 
     if (padding_bits) {
-        hex_to_char(str, tmp);
+        hex_str_to_char_str(str, 2, &tmp);
         buf[decodedCount] = gsm_to_ascii[(tmp >> padding_bits) & 0x7F];
         strCount++;
         decodedCount++;
@@ -1226,19 +1255,19 @@ uint16_t AT_CellularSMS::unpack_7_bit_gsm_to_str(const char *str, int len, char 
 
     while (strCount < len) {
         shift = (strCount - padding_bits) % 7;
-        hex_to_char(str + strCount * 2, tmp);
+        hex_str_to_char_str(str + strCount * 2, 2, &tmp);
         if (shift == 0) {
             buf[decodedCount] = gsm_to_ascii[tmp & 0x7F];
         } else if (shift == 6) {
-            hex_to_char(str + (strCount - 1) * 2, tmp1);
+            hex_str_to_char_str(str + (strCount - 1) * 2, 2, &tmp1);
             buf[decodedCount] = gsm_to_ascii[(((tmp1 >> 2)) | (tmp << 6)) & 0x7F];
             if (decodedCount + 1 < msg_len) {
-                hex_to_char(str + strCount * 2, tmp);
+                hex_str_to_char_str(str + strCount * 2, 2, &tmp);
                 decodedCount++;
                 buf[decodedCount] = gsm_to_ascii[(tmp >> 1) & 0x7F];
             }
         } else {
-            hex_to_char(str + (strCount - 1) * 2, tmp1);
+            hex_str_to_char_str(str + (strCount - 1) * 2, 2, &tmp1);
             buf[decodedCount] = gsm_to_ascii[(((tmp1 >> (8 - shift))) | ((tmp << shift))) & 0x7F];
         }
 

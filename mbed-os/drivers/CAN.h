@@ -1,5 +1,5 @@
 /* mbed Microcontroller Library
- * Copyright (c) 2006-2019 ARM Limited
+ * Copyright (c) 2006-2013 ARM Limited
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,19 +27,12 @@
 #include "platform/NonCopyable.h"
 
 namespace mbed {
-/** \defgroup drivers-public-api-can CAN
- * \ingroup drivers-public-api
- */
-
-/**
- * \defgroup drivers_CANMessage CANMessage class
- * \ingroup drivers-public-api-can
- * @{
- */
+/** \addtogroup drivers */
 
 /** CANMessage class
  *
  * @note Synchronization level: Thread safe
+ * @ingroup drivers
  */
 class CANMessage : public CAN_Message {
 
@@ -105,15 +98,8 @@ public:
     }
 };
 
-/** @}*/
-
-/**
- * \defgroup drivers_CAN CAN class
- * \ingroup drivers-public-api-can
- * @{
- */
-
 /** A can bus client, used for communicating with can devices
+ * @ingroup drivers
  */
 class CAN : private NonCopyable<CAN> {
 
@@ -329,14 +315,11 @@ public:
 protected:
     virtual void lock();
     virtual void unlock();
-
     can_t               _can;
     Callback<void()>    _irq[IrqCnt];
     PlatformMutex       _mutex;
 #endif
 };
-
-/** @}*/
 
 } // namespace mbed
 

@@ -20,6 +20,7 @@
 #include "ble/common/StaticInterface.h"
 #include "ble/UUID.h"
 #include "ble/BLETypes.h"
+#include "ble/ArrayView.h"
 #include "ble/blecommon.h"
 
 #include "platform/Callback.h"
@@ -515,7 +516,7 @@ public:
      */
     ble_error_t read_multiple_characteristic_values(
         connection_handle_t connection_handle,
-        const Span<const attribute_handle_t>& characteristic_value_handles
+        const ArrayView<const attribute_handle_t>& characteristic_value_handles
     ) {
         return self()->read_multiple_characteristic_values_(
             connection_handle,
@@ -539,7 +540,7 @@ public:
     ble_error_t write_without_response(
         connection_handle_t connection_handle,
         attribute_handle_t characteristic_value_handle,
-        const Span<const uint8_t>& value
+        const ArrayView<const uint8_t>& value
     ) {
         return self()->write_without_response_(
             connection_handle,
@@ -567,7 +568,7 @@ public:
     ble_error_t signed_write_without_response(
         connection_handle_t connection_handle,
         attribute_handle_t characteristic_value_handle,
-        const Span<const uint8_t>& value
+        const ArrayView<const uint8_t>& value
     ) {
         return self()->signed_write_without_response_(
             connection_handle,
@@ -599,7 +600,7 @@ public:
     ble_error_t write_attribute(
         connection_handle_t connection_handle,
         attribute_handle_t attribute_handle,
-        const Span<const uint8_t>& value
+        const ArrayView<const uint8_t>& value
     ) {
         return self()->write_attribute_(connection_handle, attribute_handle, value);
     }
@@ -636,7 +637,7 @@ public:
     ble_error_t queue_prepare_write(
         connection_handle_t connection_handle,
         attribute_handle_t characteristic_value_handle,
-        const Span<const uint8_t>& value,
+        const ArrayView<const uint8_t>& value,
         uint16_t offset
     ) {
         return self()->queue_prepare_write_(

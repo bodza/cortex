@@ -1,5 +1,5 @@
 /* mbed Microcontroller Library
- * Copyright (c) 2006-2019 ARM Limited
+ * Copyright (c) 2006-2012 ARM Limited
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -22,18 +22,15 @@
 #ifndef QUEUE_H
 #define QUEUE_H
 
-#include "rtos/mbed_rtos_types.h"
-#include "rtos/mbed_rtos1_types.h"
-#include "rtos/mbed_rtos_storage.h"
+#include "cmsis_os2.h"
+#include "mbed_rtos1_types.h"
+#include "mbed_rtos_storage.h"
 #include "platform/mbed_error.h"
 #include "platform/NonCopyable.h"
 
-#if MBED_CONF_RTOS_PRESENT || defined(DOXYGEN_ONLY)
-
 namespace rtos {
-/** \addtogroup rtos-public-api */
+/** \addtogroup rtos */
 /** @{*/
-
 /**
  * \defgroup rtos_Queue Queue class
  * @{
@@ -106,17 +103,6 @@ public:
     bool full() const
     {
         return osMessageQueueGetSpace(_id) == 0;
-    }
-
-    /** Get number of queued messages in the queue.
-     *
-     * @return Number of items in the queue
-     *
-     * @note You may call this function from ISR context.
-     */
-    uint32_t count() const
-    {
-        return osMessageQueueGetCount(_id);
     }
 
     /** Inserts the given element to the end of the queue.
@@ -199,8 +185,8 @@ public:
     osEvent get(uint32_t millisec = osWaitForever)
     {
         osEvent event;
-        T *data = nullptr;
-        osStatus_t res = osMessageQueueGet(_id, &data, nullptr, millisec);
+        T *data = NULL;
+        osStatus_t res = osMessageQueueGet(_id, &data, NULL, millisec);
 
         switch (res) {
             case osOK:
@@ -232,7 +218,5 @@ private:
 /** @}*/
 
 } // namespace rtos
-
-#endif
 
 #endif // QUEUE_H

@@ -1,5 +1,5 @@
 /* mbed Microcontroller Library
- * Copyright (c) 2006-2019 ARM Limited
+ * Copyright (c) 2006-2013 ARM Limited
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,17 +20,15 @@
 #include "platform/platform.h"
 
 #include "hal/gpio_api.h"
+#include "platform/mbed_critical.h"
 
 namespace mbed {
-/**
- * \defgroup drivers_DigitalInOut DigitalInOut class
- * \ingroup drivers-public-api-gpio
- * @{
- */
+/** \addtogroup drivers */
 
 /** A digital input/output, used for setting or reading a bi-directional pin
  *
  * @note Synchronization level: Interrupt safe
+ * @ingroup drivers
  */
 class DigitalInOut {
 
@@ -83,17 +81,32 @@ public:
 
     /** Set as an output
      */
-    void output();
+    void output()
+    {
+        core_util_critical_section_enter();
+        gpio_dir(&gpio, PIN_OUTPUT);
+        core_util_critical_section_exit();
+    }
 
     /** Set as an input
      */
-    void input();
+    void input()
+    {
+        core_util_critical_section_enter();
+        gpio_dir(&gpio, PIN_INPUT);
+        core_util_critical_section_exit();
+    }
 
     /** Set the input pin mode
      *
      *  @param pull PullUp, PullDown, PullNone, OpenDrain
      */
-    void mode(PinMode pull);
+    void mode(PinMode pull)
+    {
+        core_util_critical_section_enter();
+        gpio_mode(&gpio, pull);
+        core_util_critical_section_exit();
+    }
 
     /** Return the output setting, represented as 0 or 1 (int)
      *
@@ -128,7 +141,13 @@ public:
      * state from the DigitalInOut argument.
      * \sa DigitalInOut::write()
      */
-    DigitalInOut &operator= (DigitalInOut &rhs);
+    DigitalInOut &operator= (DigitalInOut &rhs)
+    {
+        core_util_critical_section_enter();
+        write(rhs.read());
+        core_util_critical_section_exit();
+        return *this;
+    }
 
     /** A shorthand for read()
      * \sa DigitalInOut::read()
@@ -151,8 +170,6 @@ protected:
     gpio_t gpio;
 #endif //!defined(DOXYGEN_ONLY)
 };
-
-/** @}*/
 
 } // namespace mbed
 

@@ -34,23 +34,26 @@
             "value": false
         },
         "ppp-enabled": {
-            "help": "Enable support for PPP interfaces (obsolete: use netsocket/ppp configuration instead)",
-            "value": false
+            "help": "Enable support for PPP interfaces",
+            "value": false,
+            "macro_name": "NSAPI_PPP_AVAILABLE"
         },
         "ppp-ipv4-enabled": {
-            "help": "Enable support for ipv4 PPP interface (obsolete: use netsocket/ppp configuration instead)",
-            "value": false
+            "help": "Enable support for ipv4 PPP interface",
+            "value": true,
+            "macro_name": "NSAPI_PPP_IPV4_AVAILABLE"
         },
         "ppp-ipv6-enabled": {
-            "help": "Enable support for ipv6 PPP interface (obsolete: use netsocket/ppp configuration instead)",
-            "value": false
+            "help": "Enable support for ipv6 PPP interface",
+            "value": false,
+            "macro_name": "NSAPI_PPP_IPV6_AVAILABLE"
         },
         "use-mbed-trace": {
             "help": "Use mbed trace for debug, rather than printf",
             "value": false
         },
         "enable-ppp-trace": {
-            "help": "Enable trace support for PPP interfaces (obsolete: use netsocket/ppp configuration instead)",
+            "help": "Enable trace support for PPP interfaces",
             "value": false
         },
         "socket-max": {
@@ -101,10 +104,6 @@
             "help": "Maximum timeout (ms) for TCP close handshaking timeout",
             "value": 1000
         },
-        "tcpip-thread-priority": {
-            "help": "Priority of lwip TCPIP thread",
-            "value": "osPriorityNormal"
-        },
         "pbuf-pool-size": {
             "help": "Number of pbufs in pool - usually used for received packets, so this determines how much data can be buffered between reception and the application reading. If a driver uses PBUF_RAM for reception, less pool may be needed. Current default (used if null here) is set to 5 in lwipopts.h, unless overridden by target Ethernet drivers.",
             "value": null
@@ -126,7 +125,7 @@
             "value": 512
         },
         "ppp-thread-stacksize": {
-            "help": "Thread stack size for PPP (obsolete: use netsocket/ppp configuration instead)",
+            "help": "Thread stack size for PPP",
             "value": 768
         }
     },
@@ -168,6 +167,7 @@
         "RZ_A1_EMAC": {
             "tcpip-thread-stacksize": 1328,
             "default-thread-stacksize": 640,
+            "ppp-thread-stacksize": 896,
             "memp-num-tcp-seg": 32,
             "tcp-mss": 1440,
             "tcp-snd-buf": "(8 * TCP_MSS)",
@@ -175,9 +175,10 @@
             "pbuf-pool-size": 16,
             "mem-size": 51200
         },
-        "MCU_PSOC6": {
+        "CYW943012P6EVB_01": {
             "tcpip-thread-stacksize": 8192,
             "default-thread-stacksize": 640,
+            "ppp-thread-stacksize": 896,
             "memp-num-tcp-seg": 24,
             "tcp-socket-max": 10,
             "udp-socket-max":10,
@@ -185,8 +186,50 @@
             "tcp-mss": 1540,
             "tcp-snd-buf": "(6 * TCP_MSS)",
             "tcp-wnd": "(TCP_MSS * 6)",
-            "pbuf-pool-size": 14,
+            "pbuf-pool-size": 48,
             "mem-size": 65536
+        },
+        "CY8CPROTO_062_4343W": {
+            "tcpip-thread-stacksize": 8192,
+            "default-thread-stacksize": 640,
+            "ppp-thread-stacksize": 896,
+            "memp-num-tcp-seg": 24,
+            "tcp-socket-max": 10,
+            "udp-socket-max":10,
+            "socket-max":18,
+            "tcp-mss": 1540,
+            "tcp-snd-buf": "(6 * TCP_MSS)",
+            "tcp-wnd": "(TCP_MSS * 6)",
+            "pbuf-pool-size": 96,
+            "mem-size": 92610
+        },
+        "CY8CKIT_062_WIFI_BT": {
+            "tcpip-thread-stacksize": 8192,
+            "default-thread-stacksize": 640,
+            "ppp-thread-stacksize": 896,
+            "memp-num-tcp-seg": 48,
+            "tcp-socket-max": 10,
+            "udp-socket-max":10,
+            "socket-max":18,
+            "tcp-mss": 1540,
+            "tcp-snd-buf": "(6 * TCP_MSS)",
+            "tcp-wnd": "(TCP_MSS * 6)",
+            "pbuf-pool-size": 48,
+            "mem-size": 65536
+        },
+        "CY8CKIT_062S2_43012": {
+           "tcpip-thread-stacksize": 8192,
+           "default-thread-stacksize": 640,
+           "ppp-thread-stacksize": 896,
+           "memp-num-tcp-seg": 24,
+           "tcp-socket-max": 10,
+           "udp-socket-max":10,
+           "socket-max":18,
+           "tcp-mss": 1540,
+           "tcp-snd-buf": "(6 * TCP_MSS)",
+           "tcp-wnd": "(TCP_MSS * 6)",
+           "pbuf-pool-size": 96,
+           "mem-size": 92610
         },
         "MIMXRT1050_EVK": {
             "mem-size": 36560

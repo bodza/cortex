@@ -1,5 +1,12 @@
+
+/** \addtogroup platform */
+/** @{*/
+/**
+ * \defgroup platform_rtc_time rtc_time functions
+ * @{
+ */
 /* mbed Microcontroller Library
- * Copyright (c) 2006-2019 ARM Limited
+ * Copyright (c) 2006-2013 ARM Limited
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,14 +27,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/** \addtogroup platform-public-api */
-/** @{*/
-
-/**
- * \defgroup platform_rtc_time rtc_time functions
- * @{
- */
 
 /* Timeval definition for non GCC_ARM toolchains */
 #if !defined(__GNUC__) || defined(__CC_ARM) || defined(__clang__)

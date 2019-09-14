@@ -1,5 +1,5 @@
 /* mbed Microcontroller Library
- * Copyright (c) 2006-2019 ARM Limited
+ * Copyright (c) 2006-2013 ARM Limited
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,11 +24,7 @@
 #include "hal/i2c_api.h"
 
 namespace mbed {
-/**
- * \defgroup drivers_I2CSlave I2CSlave class
- * \ingroup drivers-public-api-i2c
- * @{
- */
+/** \addtogroup drivers */
 
 /** An I2C Slave, used for communicating with an I2C Master device.
  *
@@ -68,6 +64,7 @@ namespace mbed {
  *     }
  * }
  * @endcode
+ * @ingroup drivers
  */
 class I2CSlave {
 
@@ -162,8 +159,6 @@ protected:
 
 #endif //!defined(DOXYGEN_ONLY)
 };
-
-/** @}*/
 
 } // namespace mbed
 

@@ -1,5 +1,8 @@
+
+/** \addtogroup platform */
+/** @{*/
 /* mbed Microcontroller Library
- * Copyright (c) 2006-2019 ARM Limited
+ * Copyright (c) 2006-2013 ARM Limited
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,3 +25,5 @@
 #include "platform/mbed_toolchain.h"
 
 #endif
+
+/** @}*/

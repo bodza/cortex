@@ -18,7 +18,7 @@
 
 #include "platform/mbed_version.h"
 
-#if MBED_CONF_RTOS_API_PRESENT
+#if MBED_CONF_RTOS_PRESENT
 #include "rtos/rtos.h"
 #endif
 
@@ -87,7 +87,6 @@
 #include "platform/LocalFileSystem.h"
 #include "drivers/InterruptIn.h"
 #include "platform/mbed_wait_api.h"
-#include "platform/mbed_thread.h"
 #include "hal/sleep_api.h"
 #include "platform/mbed_atomic.h"
 #include "platform/mbed_power_mgmt.h"
