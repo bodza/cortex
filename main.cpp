@@ -1,11 +1,14 @@
-/*#include "mbed.h"*/
+#if __MBED__
+#include "mbed.h"
+#endif
 
 #include <stdio.h>
 #include <string.h>
 
 #define nil NULL
 
-/*RawSerial io(USBTX, USBRX, 115200);*/
+#if DEVICE_SERIAL
+RawSerial io(USBTX, USBRX, 115200);
 
 int poop = EOF;
 
@@ -16,18 +19,18 @@ int _getc() {
         return c;
     }
 
-    return /*io.*/getchar();
+    return io.getc();
 }
 
-void _ungetc(int c) {
-    poop = c;
-}
-
-void _putc(int c) { /*io.*/putchar(c); }
-void _puts(const char *s) { /*io.*/printf("%s", s); }
-void _putn(int n) { /*io.*/printf("%d", n); }
-
+void _ungetc(int c) { poop = c; }
+void _putc(int c) { io.putc(c); }
+void _flush() { }
+#else
+int _getc() { return fgetc(stdin); }
+void _ungetc(int c) { ungetc(c, stdin); }
+void _putc(int c) { fputc(c, stdout); }
 void _flush() { fflush(stdout); }
+#endif
 
 typedef enum { EOT = -1, ERR, QUOTED, LPAREN, RPAREN, ALPHA, DIGIT, EOL } token_t;
 
@@ -406,6 +409,36 @@ Cons *read() {
         case ERR:
             _getc();
             return nil;
+    }
+}
+
+void _putn(int n) {
+    if (n < 0) {
+        _putc('-');
+        n = -n;
+    }
+
+    if (n < 10) {
+        _putc('0' + n);
+    } else {
+        char buf[sizeof(int) * 3] = { 0 };
+
+        int i = 0;
+
+        for ( ; 0 < n; n = n / 10) {
+            buf[i++] = '0' + (n % 10);
+        }
+
+        while (0 <= --i) {
+            _putc(buf[i]);
+        }
+    }
+}
+
+void _puts(const char *s) {
+    while (*s != '\0') {
+        _putc(*s);
+        s++;
     }
 }
 
