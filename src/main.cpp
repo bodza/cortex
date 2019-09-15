@@ -7,16 +7,6 @@
 
 #define nil NULL
 
-#undef FEATURE_BLE
-
-#if FEATURE_BLE
-#include "ble/BLE.h"
-#include "ble/services/UARTService.h"
-
-BLE ble;
-UARTService *uart;
-#endif
-
 #if DEVICE_SERIAL
 RawSerial io(USBTX, USBRX, 115200);
 
@@ -40,6 +30,213 @@ int _getc() { return fgetc(stdin); }
 void _ungetc(int c) { ungetc(c, stdin); }
 void _putc(int c) { fputc(c, stdout); }
 void _flush() { fflush(stdout); }
+#endif
+
+void _putn(int n) {
+    if (n < 0) {
+        _putc('-');
+        n = -n;
+    }
+
+    if (n < 10) {
+        _putc('0' + n);
+    } else {
+        char buf[sizeof(int) * 3] = { 0 };
+
+        int i = 0;
+
+        for ( ; 0 < n; n = n / 10) {
+            buf[i++] = '0' + (n % 10);
+        }
+
+        while (0 <= --i) {
+            _putc(buf[i]);
+        }
+    }
+}
+
+void _puts(const char *s) {
+    while (*s != '\0') {
+        _putc(*s);
+        s++;
+    }
+}
+
+#if FEATURE_BLE
+#include "ble/BLE.h"
+#include "events/mbed_events.h"
+
+EventQueue event_queue(16 * EVENTS_EVENT_SIZE);
+
+const UUID UART_UUID   ("6E400001-B5A3-F393-E0A9-E50E24DCCA9E");
+const UUID UART_TX_UUID("6E400002-B5A3-F393-E0A9-E50E24DCCA9E");
+const UUID UART_RX_UUID("6E400003-B5A3-F393-E0A9-E50E24DCCA9E");
+
+class UARTService : private mbed::NonCopyable<UARTService>, public ble::Gap::EventHandler {
+public:
+    static const unsigned BLE_UART_SERVICE_MAX_DATA_LEN = (BLE_GATT_MTU_SIZE_DEFAULT - 3);
+
+private:
+    BLE &_ble;
+    events::EventQueue &_event_queue;
+
+    DigitalOut _led1;
+    DigitalOut _led2;
+    DigitalOut _led3;
+
+    uint8_t rxBuffer[BLE_UART_SERVICE_MAX_DATA_LEN];
+    uint8_t txBuffer[BLE_UART_SERVICE_MAX_DATA_LEN];
+    uint8_t txIndex;
+    uint8_t rxTotal;
+    uint8_t rxIndex;
+
+    GattCharacteristic txCharacteristic;
+    GattCharacteristic rxCharacteristic;
+
+public:
+    UARTService(BLE &ble, events::EventQueue &event_queue) :
+        _ble(ble),
+        _event_queue(event_queue),
+        _led1(LED1, 0),
+        _led2(LED2, 0),
+        _led3(LED3, 0),
+        txCharacteristic(UART_TX_UUID, rxBuffer, 1, BLE_UART_SERVICE_MAX_DATA_LEN, GattCharacteristic::BLE_GATT_CHAR_PROPERTIES_WRITE |
+                                                                                   GattCharacteristic::BLE_GATT_CHAR_PROPERTIES_WRITE_WITHOUT_RESPONSE),
+        rxCharacteristic(UART_RX_UUID, txBuffer, 1, BLE_UART_SERVICE_MAX_DATA_LEN, GattCharacteristic::BLE_GATT_CHAR_PROPERTIES_NOTIFY) {
+        _puts("uart constructed\n"); // 
+    }
+
+    void run() {
+        _ble.gap().setEventHandler(this);
+
+        _ble.init(this, &UARTService::on_init_complete);
+
+        _event_queue.call_every(2000, this, &UARTService::blink);
+
+        _puts("dispatch forever\n"); // 
+        _event_queue.dispatch_forever();
+
+        _led1 = 0; // 
+        _led2 = 0; // 
+        _led3 = 0; // 
+        _puts("dispatch broken\n"); // 
+    }
+
+    ~UARTService() {
+        if (_ble.hasInitialized()) {
+            _ble.shutdown();
+        }
+        _puts("uart destructed\n"); // 
+    }
+
+    uint16_t getTXCharacteristicHandle() { return txCharacteristic.getValueAttribute().getHandle(); }
+    uint16_t getRXCharacteristicHandle() { return rxCharacteristic.getValueAttribute().getHandle(); }
+
+    size_t write(const void *_buffer, size_t _length) {
+        if (/*_ble.gap().getState().connected*/true) {
+            const uint8_t *buffer = static_cast<const uint8_t *>(_buffer);
+            size_t         length = _length;
+            unsigned       index  = 0;
+
+            while (length) {
+                unsigned m = BLE_UART_SERVICE_MAX_DATA_LEN - txIndex;
+                unsigned n = (length < m) ? length : m;
+
+                memcpy(&txBuffer[txIndex], &buffer[index], n);
+                length  -= n;
+                txIndex += n;
+                index   += n;
+
+                if ((txIndex == BLE_UART_SERVICE_MAX_DATA_LEN) || (txBuffer[txIndex - 1] == '\n')) {
+                    _ble.gattServer().write(getRXCharacteristicHandle(), static_cast<const uint8_t *>(txBuffer), txIndex);
+                    txIndex = 0;
+                }
+            }
+        }
+
+        return _length;
+    }
+
+    size_t writeString(const char *str) { return write(str, strlen(str)); }
+
+    void flush() {
+        if (/*_ble.gap().getState().connected*/true) {
+            if (txIndex != 0) {
+                _ble.gattServer().write(getRXCharacteristicHandle(), static_cast<const uint8_t *>(txBuffer), txIndex);
+                txIndex = 0;
+            }
+        }
+    }
+
+    int _putc(int c) { return (write(&c, 1) == 1) ? 1 : EOF; }
+    int _getc() { return (rxIndex == rxTotal) ? EOF : rxBuffer[rxIndex++]; }
+
+protected:
+    void blink(void) {
+        _led2 = !_led2;
+        writeString(_led2 ? "p1ng\n" : "p0ng\n"); // 
+        _puts(_led2 ? "p1ng\n" : "p0ng\n"); // 
+    }
+
+    void onDataWritten(const GattWriteCallbackParams *params) {
+        _led3 = !_led3; // 
+        _puts("data received\n"); // 
+        if (params->handle == getTXCharacteristicHandle()) {
+            uint16_t len = params->len;
+            if (len <= BLE_UART_SERVICE_MAX_DATA_LEN) {
+                rxTotal = len;
+                rxIndex = 0;
+                memcpy(rxBuffer, params->data, rxTotal);
+            }
+        }
+    }
+
+private:
+    void on_init_complete(BLE::InitializationCompleteCallbackContext *e) {
+        _puts("ble init complete\n"); // 
+
+        {
+            GattCharacteristic *table[] = { &txCharacteristic, &rxCharacteristic };
+            GattService service(UART_UUID, table, sizeof(table) / sizeof(*table));
+
+            _ble.gattServer().addService(service);
+            _ble.gattServer().onDataWritten(this, &UARTService::onDataWritten);
+        }
+
+        {
+            ble::AdvertisingParameters aps(
+                ble::advertising_type_t::CONNECTABLE_UNDIRECTED,
+                ble::adv_interval_t(ble::millisecond_t(1000))
+            );
+
+            _ble.gap().setAdvertisingParameters(ble::LEGACY_ADVERTISING_HANDLE, aps);
+        }
+
+        {
+            uint8_t adv_buffer[ble::LEGACY_ADVERTISING_MAX_SIZE];
+            ble::AdvertisingDataBuilder adb(adv_buffer);
+
+            adb.setFlags();
+            adb.setName("Charm Cortex-ζ");
+            adb.setLocalServiceList(mbed::make_Span(&UART_UUID, 1));
+
+            _ble.gap().setAdvertisingPayload(ble::LEGACY_ADVERTISING_HANDLE, adb.getAdvertisingData());
+        }
+
+        _ble.gap().startAdvertising(ble::LEGACY_ADVERTISING_HANDLE);
+        _puts("advertising started\n"); // 
+    }
+
+    void onConnectionComplete(const ble::ConnectionCompleteEvent &e) {
+        _puts("connection complete\n"); // 
+    }
+
+    void onDisconnectionComplete(const ble::DisconnectionCompleteEvent &e) {
+        _puts("disconnection complete\n"); // 
+     // _ble.gap().startAdvertising(ble::LEGACY_ADVERTISING_HANDLE);
+        _event_queue.break_dispatch(); // 
+    }
+};
 #endif
 
 typedef enum { EOT = -1, ERR, QUOTED, LPAREN, RPAREN, ALPHA, DIGIT, EOL } token_t;
@@ -422,36 +619,6 @@ Cons *read() {
     }
 }
 
-void _putn(int n) {
-    if (n < 0) {
-        _putc('-');
-        n = -n;
-    }
-
-    if (n < 10) {
-        _putc('0' + n);
-    } else {
-        char buf[sizeof(int) * 3] = { 0 };
-
-        int i = 0;
-
-        for ( ; 0 < n; n = n / 10) {
-            buf[i++] = '0' + (n % 10);
-        }
-
-        while (0 <= --i) {
-            _putc(buf[i]);
-        }
-    }
-}
-
-void _puts(const char *s) {
-    while (*s != '\0') {
-        _putc(*s);
-        s++;
-    }
-}
-
 void print(Cons *p) {
     if (p == nil) {
         return;
@@ -687,28 +854,23 @@ Cons *def(const char *name, int t) {
 }
 
 #if FEATURE_BLE
-void _onDisconnection(const Gap::DisconnectionCallbackParams_t *params) {
-    ble.startAdvertising();
+void schedule_ble_events(BLE::OnEventsToProcessCallbackContext *context) {
+    event_queue.call(Callback<void()>(&context->ble, &BLE::processEvents));
 }
 #endif
 
 int main() {
 #if FEATURE_BLE
-    ble.init();
-    ble.onDisconnection(_onDisconnection);
+    BLE &ble = BLE::Instance();
 
-    uart = new UARTService(ble);
+    ble.onEventsToProcess(schedule_ble_events);
 
-    ble.accumulateAdvertisingPayload(GapAdvertisingData::BREDR_NOT_SUPPORTED);
-    ble.setAdvertisingType(GapAdvertisingParams::ADV_CONNECTABLE_UNDIRECTED);
-    ble.accumulateAdvertisingPayload(GapAdvertisingData::SHORTENED_LOCAL_NAME, (const uint8_t *)"BLE UART", sizeof("BLE UART") - 1);
-    ble.accumulateAdvertisingPayload(GapAdvertisingData::COMPLETE_LIST_128BIT_SERVICE_IDS, (const uint8_t *)UARTServiceUUID_reversed, sizeof(UARTServiceUUID_reversed));
-    ble.setAdvertisingInterval(160); // 100ms in multiples of 0.625ms
+    UARTService uart(ble, event_queue);
 
-    ble.startAdvertising();
-    while (true) {
-        ble.waitForEvent();
-    }
+    uart.run();
+
+    ble.shutdown(); // 
+    _puts("ble shut down\n"); // 
 #endif
 
     TRUE = cons(def("t", T), nil);
