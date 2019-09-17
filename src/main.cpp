@@ -62,6 +62,13 @@ void _puts(const char *s) {
     }
 }
 
+#if DEVICE_ANALOGIN
+AnalogIn ai[] = {
+    AnalogIn(A0), AnalogIn(A1), AnalogIn(A2), AnalogIn(A3), AnalogIn(A4), AnalogIn(A5), AnalogIn(D0), AnalogIn(D1),
+    AnalogIn(ADC_TEMP), AnalogIn(ADC_VREF), AnalogIn(ADC_VBAT)
+};
+#endif
+
 #if FEATURE_BLE
 #include "ble/BLE.h"
 #include "events/mbed_events.h"
@@ -144,8 +151,10 @@ public:
         _puts("uart destructed\n"); // 
     }
 
-    uint16_t getTXCharacteristicHandle() { return txCharacteristic.getValueAttribute().getHandle(); }
-    uint16_t getRXCharacteristicHandle() { return rxCharacteristic.getValueAttribute().getHandle(); }
+    uint16_t txHandle() { return txCharacteristic.getValueAttribute().getHandle(); }
+    uint16_t rxHandle() { return rxCharacteristic.getValueAttribute().getHandle(); }
+
+    int __getc() { return (rxIndex < rxTotal) ? rxBuffer[rxIndex++] : EOF; }
 
     size_t write(const void *_buffer, size_t _length) {
         if (_connected) {
@@ -163,7 +172,7 @@ public:
                 index   += n;
 
                 if (txIndex == BLE_UART_SERVICE_MAX_DATA_LEN || txBuffer[txIndex - 1] == '\n') {
-                    _ble.gattServer().write(getRXCharacteristicHandle(), txBuffer, txIndex);
+                    _ble.gattServer().write(rxHandle(), txBuffer, txIndex);
                     txIndex = 0;
                 }
             }
@@ -172,29 +181,66 @@ public:
         return _length;
     }
 
-    size_t writeString(const char *str) { return write(str, strlen(str)); }
+    int __putc(int c) { return (write(&c, 1) == 1) ? 1 : EOF; }
+
+    void __putn(int n) {
+        if (n < 0) {
+            __putc('-');
+            n = -n;
+        }
+
+        if (n < 10) {
+            __putc('0' + n);
+        } else {
+            char buf[sizeof(int) * 3] = { 0 };
+
+            int i = 0;
+
+            for ( ; 0 < n; n = n / 10) {
+                buf[i++] = '0' + (n % 10);
+            }
+
+            while (0 <= --i) {
+                __putc(buf[i]);
+            }
+        }
+    }
+
+    size_t __puts(const char *str) { return write(str, strlen(str)); }
 
     void flush() {
         if (_connected) {
             if (txIndex != 0) {
-                _ble.gattServer().write(getRXCharacteristicHandle(), txBuffer, txIndex);
+                _ble.gattServer().write(rxHandle(), txBuffer, txIndex);
                 txIndex = 0;
             }
         }
     }
 
-    int __putc(int c) { return (write(&c, 1) == 1) ? 1 : EOF; }
-    int __getc() { return (rxIndex < rxTotal) ? rxBuffer[rxIndex++] : EOF; }
-
 protected:
     void blink(void) {
         _led2 = !_led2;
-        const char *s = _led2 ? "p1ng\n" : "p0ng\n"; writeString(s); _puts(s); // 
+#if DEVICE_ANALOGIN
+        _led1 = (0.3f < ai[0]) ? 1 : 0; // 
+
+        int m = sizeof(ai) / sizeof(*ai);
+        int r = (1 << 12);
+
+        for (int i = 0; i < m; i++) {
+            int v = ai[i] * r;
+            char c = (i < m - 1) ? ' ' : '\n';
+
+            __putn(v); _putn(v); //
+            __putc(c); _putc(c); //
+        }
+#else
+        const char *s = _led2 ? "p1ng\n" : "p0ng\n"; __puts(s); _puts(s); // 
+#endif
     }
 
     void onDataWritten(const GattWriteCallbackParams *params) {
         _led3 = !_led3; // 
-        if (params->handle == getTXCharacteristicHandle()) {
+        if (params->handle == txHandle()) {
             uint16_t len = params->len;
             if (len <= BLE_UART_SERVICE_MAX_DATA_LEN) {
                 rxTotal = len;
@@ -272,16 +318,21 @@ void bleuart() {
 
 #if DEVICE_ANALOGIN
 void zoolog() {
-    AnalogIn   ain(A0);
-    DigitalOut dout(LED1);
+    DigitalOut led1(LED1);
 
-    for (int i = 0; i < 50; i++) {
-        dout = (0.3f < ain) ? 1 : 0;
-        printf("%3.3f%% 0x%04X\n", ain.read() * 100.0f, ain.read_u16());
+    int m = sizeof(ai) / sizeof(*ai);
+    int r = (1 << 12);
+
+    for (int n = 0; n < 50; n++) {
+        led1 = (0.3f < ai[0]) ? 1 : 0; // 
+        for (int i = 0; i < m; i++) {
+            _putn(ai[i] * r);
+            _putc((i < m - 1) ? ' ' : '\n');
+        }
         wait(0.2f);
     }
 
-    dout = 0;
+    led1 = 0;
 }
 #endif
 
