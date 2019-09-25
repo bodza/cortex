@@ -378,14 +378,13 @@ void rplact(Cons *p, int t) { p->type = t; }
 
 Cons *number(int n) {
     Cons *p = cons(nil, nil);
-    rplact(p, NUMBER);
     p->u.number = n;
+    rplact(p, NUMBER);
 
     return p;
 }
 
 Cons *ENV;
-Cons *CORE;
 Cons *TRUE;
 
 Cons *declare(const char *name) {
@@ -412,28 +411,24 @@ Cons *evalcond(Cons *expr, Cons *env) {
     return evalcond(cdr(expr), env);
 }
 
-Cons *pairargs(Cons *params, Cons *args, Cons *env, bool prog) {
-    if (params == nil) {
+Cons *pairargs(Cons *pars, Cons *args, Cons *env, bool prog) {
+    if (pars == nil) {
         return env;
     }
 
     Cons *p = cons(nil, car(args)); // value of param is corresponding arg
-    p->u.symbol = _symbol(car(car(params)));
+    p->u.symbol = _symbol(car(car(pars)));
     rplact(p, VAR);
 
-    if (prog) {
-        return cons(p, pairargs(cdr(params), cons(nil, nil), env, prog));
-    }
-
-    return cons(p, pairargs(cdr(params), cdr(args), env, prog));
+    return cons(p, pairargs(cdr(pars), prog ? cons(nil, nil) : cdr(args), env, prog));
 }
 
-Cons *evalargs(Cons *arglist, Cons *env) {
-    if (arglist == nil) {
+Cons *evalargs(Cons *args, Cons *env) {
+    if (args == nil) {
         return nil;
     }
 
-    return cons(eval(car(arglist), env), evalargs(cdr(arglist), env));
+    return cons(eval(car(args), env), evalargs(cdr(args), env));
 }
 
 // find_labels - change the type of all labels in a PROG to LABL
@@ -473,13 +468,12 @@ Cons *evalprog(Cons *p, Cons *env) {
 
 Cons *lookup(Cons *env, const char *name) {
     Cons *p = env;
-    while (p != nil) {
-        if (strcmp(name, _symbol(car(p))) == 0) {
-            break;
-        }
+
+    while (p != nil && strcmp(_symbol(car(p)), name) != 0) {
         p = cdr(p);
     }
-    return ((p == nil) ? nil : car(p));
+
+    return (p == nil) ? nil : car(p);
 }
 
 Cons *arith(Cons *op, Cons *x, Cons *y) {
@@ -507,7 +501,7 @@ Cons *arith(Cons *op, Cons *x, Cons *y) {
 }
 
 bool _isalpha(int c) {
-    return ('A' <= c && c <= 'Z') || ('a' <= c && c <= 'z');
+    return ('A' <= c && c <= 'Z') || ('a' <= c && c <= 'z') || strchr("!*+-/<=>?_", c) != nil; // 
 }
 
 bool _isdigit(int c) {
@@ -532,7 +526,7 @@ Cons *read_number() {
 }
 
 Cons *read_symbol() {
-    char inbuf[120];
+    char inbuf[32 + 1];
     char *s = inbuf;
 
     {
@@ -540,7 +534,7 @@ Cons *read_symbol() {
         *s = c;
         s++;
         if (c != '\'') {
-            while (true) {
+            while (s - inbuf < sizeof(inbuf) - 1) {
                 c = _getc();
                 if (!_isalpha(c) && !_isdigit(c)) {
                     _ungetc(c);
@@ -553,14 +547,11 @@ Cons *read_symbol() {
         *s = '\0';
     }
 
-    Cons *q = lookup(CORE, inbuf);
+    Cons *q = lookup(ENV, inbuf);
     if (q == nil) {
-        q = lookup(ENV, inbuf);
-        if (q == nil) {
-            s = new char[strlen(inbuf) + 1];
-            strcpy(s, inbuf);
-            q = declare(s);
-        }
+        s = new char[strlen(inbuf) + 1];
+        strcpy(s, inbuf);
+        q = declare(s);
     }
 
     Cons *p = cons(q, nil);
@@ -576,7 +567,7 @@ int advance() {
         if (c == EOF) {
             break;
         }
-        if (strchr(" \t\r", c) == nil) {
+        if (strchr(" \t\r,", c) == nil) { // 
             break;
         }
     }
@@ -595,8 +586,8 @@ token_t read_token() {
     }
 
     switch (c) {
-        case '(': return LPAREN;
-        case ')': return RPAREN;
+        case '(': case '[': return LPAREN;
+        case ')': case ']': return RPAREN;
         case '\'': return QUOTED;
         case '\n': return EOL;
         case EOF: return EOT;
@@ -981,33 +972,31 @@ int main() {
     def("cdr", FCDR); def("next", FCDR);
     def("cond", COND);
     def("cons", FCONS);
-    def("defun", DEFUN);
-    def("diff", FDIFF);
-    def("eq", EQP);
+    def("defun", DEFUN); def("defn", DEFUN);
+    def("diff", FDIFF); def("-", FDIFF);
+    def("eq", EQP); def("=", EQP);
     def("eval", FEVAL);
     def("funcall", FUNCALL);
     def("go", GO);
-    def("greaterp", GREATERP);
-    def("lessp", LESSP);
+    def("greaterp", GREATERP); def(">", GREATERP);
+    def("lessp", LESSP); def("<", LESSP);
     def("nil", NIL);
     def("not", FNOT);
-    def("null", NULLP);
-    def("numberp", NUMBERP);
+    def("null", NULLP); def("nil?", NULLP);
+    def("numberp", NUMBERP); def("number?", NUMBERP);
     def("or", FOR);
-    def("plus", FPLUS);
+    def("plus", FPLUS); def("+", FPLUS);
     def("print", FPRINT);
     def("prog", PROG);
-    def("quot", FQUOT);
+    def("quot", FQUOT); def("/", FQUOT);
     def("read", FREAD);
     def("return", RETRN);
     def("rplaca", FREPLACA);
     def("rplacd", FREPLACD);
     def("setq", FSETQ);
     def("sub1", FSUB1); def("dec", FSUB1);
-    def("times", FTIMES);
-    def("zerop", ZEROP);
-
-    CORE = ENV;
+    def("times", FTIMES); def("*", FTIMES);
+    def("zerop", ZEROP); def("zero?", ZEROP);
 
 #if FEATURE_BLE
     def("bleuart", BLEUART);
