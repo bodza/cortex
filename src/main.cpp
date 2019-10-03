@@ -8,7 +8,7 @@
 #define nil NULL
 
 #if DEVICE_SERIAL
-RawSerial io(USBTX, USBRX, 115200);
+RawSerial io(USBTX, USBRX/*, 115200*/);
 
 int poop = EOF;
 
@@ -62,10 +62,45 @@ void _puts(const char *s) {
     }
 }
 
+#if DEVICE_SLEEP
+uint32_t ispr0, ispr1, ispr2, icsr;
+
+#define __ZZZ() ({ \
+    uint32_t primask = __get_PRIMASK(); \
+    __disable_irq(); \
+    ispr0 = NVIC->ISPR[0];  \
+    ispr1 = NVIC->ISPR[1];  \
+    ispr2 = NVIC->ISPR[2];  \
+    icsr = SCB->ICSR;       \
+    __set_PRIMASK(primask); \
+})
+
+void _sleep() {
+    core_util_critical_section_enter();
+
+#if DEVICE_USTICKER
+    us_ticker_disable_interrupt();
+    us_ticker_clear_interrupt();
+#endif
+#if DEVICE_LPTICKER
+    lp_ticker_disable_interrupt();
+    lp_ticker_clear_interrupt();
+#endif
+
+    if (/*sleep_manager_can_deep_sleep()*/false) {
+        hal_deepsleep();
+    } else {
+        hal_sleep();
+    }
+
+    core_util_critical_section_exit();
+}
+#endif
+
 #if DEVICE_ANALOGIN
 AnalogIn ai[] = {
     AnalogIn(A0), AnalogIn(A1), AnalogIn(A2), AnalogIn(A3), AnalogIn(A4), AnalogIn(A5), AnalogIn(D0), AnalogIn(D1),
-    AnalogIn(ADC_TEMP), AnalogIn(ADC_VREF), AnalogIn(ADC_VBAT)
+  /*AnalogIn(ADC_TEMP),*/ AnalogIn(ADC_VREF)/*, AnalogIn(ADC_VBAT)*/
 };
 #endif
 
@@ -126,7 +161,7 @@ public:
         }
 
         if (_blinker == 0) {
-            _blinker = _event_queue.call_every(2000, this, &BleuArt::blink);
+            _blinker = _event_queue.call_every(200, this, &BleuArt::blink);
             _puts("blinker started\n"); // 
         }
 
@@ -226,13 +261,19 @@ protected:
         int m = sizeof(ai) / sizeof(*ai);
         int r = (1 << 12);
 
+        __putn(0); _putn(0); // 
+        __putc(' '); _putc(' '); // 
+
         for (int i = 0; i < m; i++) {
             int v = ai[i] * r;
-            char c = (i < m - 1) ? ' ' : '\n';
+            char c = ' '; //  (i < m - 1) ? ' ' : '\n';
 
             __putn(v); _putn(v); //
             __putc(c); _putc(c); //
         }
+
+        __putn(r - 1); _putn(r - 1); // 
+        __putc('\n'); _putc('\n'); // 
 #else
         const char *s = _led2 ? "p1ng\n" : "p0ng\n"; __puts(s); _puts(s); // 
 #endif
@@ -317,22 +358,270 @@ void bleuart() {
 #endif
 
 #if DEVICE_ANALOGIN
-void zoolog() {
-    DigitalOut led1(LED1);
+#include "PeripheralPins.h"
 
-    int m = sizeof(ai) / sizeof(*ai);
-    int r = (1 << 12);
+PinName _pins[] = { A0, A1, A2, A3, A4, A5, D0, D1 };
+const int _n = sizeof(_pins) / sizeof(*_pins);
+const int _m = 4000 * _n;
 
-    for (int n = 0; n < 50; n++) {
-        led1 = (0.3f < ai[0]) ? 1 : 0; // 
-        for (int i = 0; i < m; i++) {
-            _putn(ai[i] * r);
-            _putc((i < m - 1) ? ' ' : '\n');
-        }
-        wait(0.2f);
+class ZooLog {
+public:
+    ZooLog() {
+        _led1 = 0;
+
+        _values = new uint16_t[_m];
+
+        lock();
+        init();
+        unlock();
     }
 
-    led1 = 0;
+    void init() {
+        for (int i = 0; i < _n; i++) {
+            uint32_t function = (uint32_t)NC;
+
+            if (_pins[i] < 0xF0 || 0x100 <= _pins[i]) {
+                _handle.Instance = (ADC_TypeDef *)pinmap_peripheral(_pins[i], PinMap_ADC);
+                function = pinmap_function(_pins[i], PinMap_ADC);
+                pinmap_pinout(_pins[i], PinMap_ADC);
+            } else {
+                _handle.Instance = (ADC_TypeDef *)pinmap_peripheral(_pins[i], PinMap_ADC_Internal);
+                function = pinmap_function(_pins[i], PinMap_ADC_Internal);
+            }
+            MBED_ASSERT(_handle.Instance != (ADC_TypeDef *)NC);
+            MBED_ASSERT(function != (uint32_t)NC);
+
+            _channels[i] = STM_PIN_CHANNEL(function);
+        }
+
+        _handle.State = HAL_ADC_STATE_RESET;
+        _handle.Init.ClockPrescaler        = ADC_CLOCK_ASYNC_DIV4;
+        _handle.Init.Resolution            = ADC_RESOLUTION_12B;
+        _handle.Init.DataAlign             = ADC_DATAALIGN_RIGHT;
+        _handle.Init.ScanConvMode          = ADC_SCAN_ENABLE;
+        _handle.Init.EOCSelection          = ADC_EOC_SINGLE_CONV;
+        _handle.Init.LowPowerAutoWait      = ENABLE; // 
+        _handle.Init.ContinuousConvMode    = ENABLE;
+        _handle.Init.NbrOfConversion       = _n;
+        _handle.Init.DiscontinuousConvMode = DISABLE;
+        _handle.Init.NbrOfDiscConversion   = 1;
+        _handle.Init.ExternalTrigConv      = ADC_SOFTWARE_START;
+        _handle.Init.ExternalTrigConvEdge  = ADC_EXTERNALTRIGCONVEDGE_NONE;
+        _handle.Init.DMAContinuousRequests = DISABLE;
+        _handle.Init.Overrun               = ADC_OVR_DATA_OVERWRITTEN;
+        _handle.Init.OversamplingMode      = DISABLE;
+
+        __HAL_RCC_ADC_CLK_ENABLE();
+
+        __HAL_RCC_ADC_CONFIG(RCC_ADCCLKSOURCE_SYSCLK);
+
+        if (HAL_ADC_Init(&_handle) != HAL_OK) {
+            error("ADC init failed\r\n");
+        }
+
+        if (!HAL_ADCEx_Calibration_GetValue(&_handle, ADC_SINGLE_ENDED)) {
+            HAL_ADCEx_Calibration_Start(&_handle, ADC_SINGLE_ENDED);
+        }
+
+        HAL_NVIC_SetPriority(COMP_IRQn, 3, 0);
+        HAL_NVIC_EnableIRQ(COMP_IRQn);
+
+        _hcomp1.Instance = COMP1;
+        _hcomp1.State = HAL_COMP_STATE_RESET;
+        _hcomp1.Init.InputMinus = COMP_INPUT_MINUS_VREFINT;
+        _hcomp1.Init.InputPlus = COMP_INPUT_PLUS_IO3;
+        _hcomp1.Init.OutputPol = COMP_OUTPUTPOL_INVERTED;
+        _hcomp1.Init.Hysteresis = COMP_HYSTERESIS_LOW;
+        _hcomp1.Init.BlankingSrce = COMP_BLANKINGSRC_NONE;
+        _hcomp1.Init.Mode = COMP_POWERMODE_MEDIUMSPEED;
+        _hcomp1.Init.WindowMode = COMP_WINDOWMODE_DISABLE;
+        _hcomp1.Init.TriggerMode = COMP_TRIGGERMODE_IT_RISING_FALLING;
+
+        if (HAL_COMP_Init(&_hcomp1) != HAL_OK) {
+            debug("COMP init failed\r\n");    
+        }
+    }
+
+    void run() {
+        lock();
+        read();
+        unlock();
+
+        for (int i = 0; i < _m; i++) {
+            _putn(_values[i]);
+            bool more = (i % _n < _n - 1);
+            _putc(more ? ' ' : '\n');
+            if (!more) {
+                i += _m / 40 - _n;
+            }
+        }
+    }
+
+    void read() {
+        ADC_ChannelConfTypeDef sConfig = {0};
+
+        for (int i = 0; i < _n; i++) {
+            switch (i) {
+                case 0: sConfig.Rank = ADC_REGULAR_RANK_1; break;
+                case 1: sConfig.Rank = ADC_REGULAR_RANK_2; break;
+                case 2: sConfig.Rank = ADC_REGULAR_RANK_3; break;
+                case 3: sConfig.Rank = ADC_REGULAR_RANK_4; break;
+                case 4: sConfig.Rank = ADC_REGULAR_RANK_5; break;
+                case 5: sConfig.Rank = ADC_REGULAR_RANK_6; break;
+                case 6: sConfig.Rank = ADC_REGULAR_RANK_7; break;
+                case 7: sConfig.Rank = ADC_REGULAR_RANK_8; break;
+                case 8: sConfig.Rank = ADC_REGULAR_RANK_9; break;
+                case 9: sConfig.Rank = ADC_REGULAR_RANK_10; break;
+                case 10: sConfig.Rank = ADC_REGULAR_RANK_11; break;
+                case 11: sConfig.Rank = ADC_REGULAR_RANK_12; break;
+                case 12: sConfig.Rank = ADC_REGULAR_RANK_13; break;
+                case 13: sConfig.Rank = ADC_REGULAR_RANK_14; break;
+                case 14: sConfig.Rank = ADC_REGULAR_RANK_15; break;
+                case 15: sConfig.Rank = ADC_REGULAR_RANK_16; break;
+                default:
+                    MBED_ASSERT(false);
+                    break;
+            }
+
+            sConfig.SamplingTime = ADC_SAMPLETIME_47CYCLES_5;
+            sConfig.SingleDiff   = ADC_SINGLE_ENDED;
+            sConfig.OffsetNumber = ADC_OFFSET_NONE;
+            sConfig.Offset       = 0;
+
+            switch (_channels[i]) {
+                case 0:
+                    sConfig.Channel = ADC_CHANNEL_VREFINT;
+                    sConfig.SamplingTime = ADC_SAMPLETIME_247CYCLES_5;
+                    break;
+                case 1: sConfig.Channel = ADC_CHANNEL_1; break;
+                case 2: sConfig.Channel = ADC_CHANNEL_2; break;
+                case 3: sConfig.Channel = ADC_CHANNEL_3; break;
+                case 4: sConfig.Channel = ADC_CHANNEL_4; break;
+                case 5: sConfig.Channel = ADC_CHANNEL_5; break;
+                case 6: sConfig.Channel = ADC_CHANNEL_6; break;
+                case 7: sConfig.Channel = ADC_CHANNEL_7; break;
+                case 8: sConfig.Channel = ADC_CHANNEL_8; break;
+                case 9: sConfig.Channel = ADC_CHANNEL_9; break;
+                case 10: sConfig.Channel = ADC_CHANNEL_10; break;
+                case 11: sConfig.Channel = ADC_CHANNEL_11; break;
+                case 12: sConfig.Channel = ADC_CHANNEL_12; break;
+                case 13: sConfig.Channel = ADC_CHANNEL_13; break;
+                case 14: sConfig.Channel = ADC_CHANNEL_14; break;
+                case 15: sConfig.Channel = ADC_CHANNEL_15; break;
+                case 16: sConfig.Channel = ADC_CHANNEL_16; break;
+                case 17:
+                     sConfig.Channel = ADC_CHANNEL_TEMPSENSOR;
+                     sConfig.SamplingTime = ADC_SAMPLETIME_247CYCLES_5;
+                     break;
+                case 18:
+                     sConfig.Channel = ADC_CHANNEL_VBAT;
+                     sConfig.SamplingTime = ADC_SAMPLETIME_640CYCLES_5;
+                     break;
+                default:
+                     MBED_ASSERT(false);
+                     break;
+            }
+
+            if (HAL_ADC_ConfigChannel(&_handle, &sConfig) != HAL_OK) {
+                debug("ADC channel configuration failed\r\n");
+            }
+        }
+
+        if (HAL_COMP_Start(&_hcomp1) != HAL_OK) {
+            debug("COMP start failed\r\n");    
+        }
+
+_puts("\nzzz...\n"); // 
+        _sleep();
+
+        if (HAL_ADC_Start(&_handle) != HAL_OK) {
+            debug("ADC start of conversion failed\r\n");
+        }
+
+        for (int i = 0; i < _m; i++) {
+            uint16_t value = 0;
+            if (HAL_ADC_PollForConversion(&_handle, 128) == HAL_OK) {
+                value = (uint16_t)HAL_ADC_GetValue(&_handle);
+            }
+            _values[i] = value;
+        }
+
+        if (HAL_ADC_Stop(&_handle) != HAL_OK) {
+            debug("ADC stop of conversion failed\r\n");
+        }
+
+        if (HAL_COMP_Stop(&_hcomp1) != HAL_OK) {
+            debug("COMP stop failed\r\n");    
+        }
+
+        LL_ADC_SetCommonPathInternalCh(__LL_ADC_COMMON_INSTANCE((&_handle)->Instance), LL_ADC_PATH_INTERNAL_NONE);
+    }
+
+    void deinit() {
+        if (HAL_COMP_DeInit(&_hcomp1) != HAL_OK) {
+            debug("COMP deinit failed\r\n");    
+        }
+
+        HAL_NVIC_DisableIRQ(COMP_IRQn);
+
+        if (HAL_ADC_DeInit(&_handle) != HAL_OK) {
+            error("ADC deinit failed\r\n");
+        }
+
+        __HAL_RCC_ADC_CONFIG(RCC_ADCCLKSOURCE_NONE);
+
+        __HAL_RCC_ADC_CLK_DISABLE();
+    }
+
+    virtual ~ZooLog() {
+        lock();
+        deinit();
+        unlock();
+
+        delete _values;
+
+        _led1 = 0;
+    }
+
+protected:
+    virtual void lock() { _mutex->lock(); }
+    virtual void unlock() { _mutex->unlock(); }
+
+    static SingletonPtr<PlatformMutex> _mutex;
+
+    ADC_HandleTypeDef _handle;
+    uint8_t _channels[_n];
+    uint16_t *_values;
+
+public:
+    static COMP_HandleTypeDef _hcomp1;
+    static DigitalOut _led1;
+};
+
+SingletonPtr<PlatformMutex> ZooLog::_mutex;
+
+COMP_HandleTypeDef ZooLog::_hcomp1 = {0};
+DigitalOut ZooLog::_led1(LED1, 0);
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+void COMP_IRQHandler(void) {
+    HAL_COMP_IRQHandler(&ZooLog::_hcomp1);
+}
+
+void HAL_COMP_TriggerCallback(COMP_HandleTypeDef *hcomp) {
+    ZooLog::_led1 = !ZooLog::_led1;
+}
+
+#ifdef __cplusplus
+}
+#endif
+
+void zoolog() {
+    ZooLog ai;
+    ai.run();
 }
 #endif
 
@@ -534,7 +823,7 @@ Cons *read_symbol() {
         *s = c;
         s++;
         if (c != '\'') {
-            while (s - inbuf < sizeof(inbuf) - 1) {
+            while ((unsigned)(s - inbuf) < sizeof(inbuf) - 1) {
                 c = _getc();
                 if (!_isalpha(c) && !_isdigit(c)) {
                     _ungetc(c);
